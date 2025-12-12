@@ -28,7 +28,7 @@
 # Configuration
 #=======================================================================
 PROJECT_DIR="/project/def-arashmoh/shahab33/Msc"
-TAB2IMG_DIR="$PROJECT_DIR/Tab2img"
+
 DATASETS_DIR="$PROJECT_DIR/tabularDataset"
 VENV_PATH="$PROJECT_DIR/venvMsc/bin/activate"
 MAIN_SCRIPT="$TAB2IMG_DIR/run_vif.py"

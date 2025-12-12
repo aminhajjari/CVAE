@@ -126,8 +126,8 @@ def calculate_dual_shap_interpretability(model, test_loader, device, n_features,
     print("   ✓ Prediction wrappers created")
     # Warn user about computational complexity
     if n_features > 50:
-    print(f"   ⚠️  WARNING: Large feature space detected ({n_features} features).")
-    print(f"   ⚠️  SHAP computation may take 30-60 minutes. Consider reducing n_test if needed.")
+        print(f"   ⚠️  WARNING: Large feature space detected ({n_features} features).")
+        print(f"   ⚠️  SHAP computation may take 30-60 minutes. Consider reducing n_test if needed.")
     
     # ============================================================
     # STEP 4: Calculate SHAP Values (DUAL explanations)

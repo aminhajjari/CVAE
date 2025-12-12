@@ -18,8 +18,8 @@
 #SBATCH --mem=16G
 #SBATCH --time=01:00:00
 
-#SBATCH --output=/project/def-arashmoh/shahab33/Msc/Tab2img/job_logs/cvae_debug_%j.out
-#SBATCH --error=/project/def-arashmoh/shahab33/Msc/Tab2img/job_logs/cvae_debug_%j.err
+#SBATCH --output=/project/def-arashmoh/shahab33/Msc/CVAE/job_logs/cvae_debug_%j.out
+#SBATCH --error=/project/def-arashmoh/shahab33/Msc/CVAE/job_logs/cvae_debug_%j.err
 
 #SBATCH --mail-user=aminhajjr@gmail.com
 #SBATCH --mail-type=END,FAIL

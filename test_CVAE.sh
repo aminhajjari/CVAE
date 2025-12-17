@@ -24,10 +24,12 @@
 #SBATCH --mail-user=aminhajjr@gmail.com
 #SBATCH --mail-type=END,FAIL
 
+
 #=======================================================================
 # Configuration
 #=======================================================================
 PROJECT_DIR="/project/def-arashmoh/shahab33/Msc"
+TAB2IMG_DIR="$PROJECT_DIR/CVAE"  # 
 
 DATASETS_DIR="$PROJECT_DIR/tabularDataset"
 VENV_PATH="$PROJECT_DIR/venvMsc/bin/activate"

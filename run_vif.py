@@ -1066,7 +1066,7 @@ def save_sample_images(model, test_data_loader, dataset_name, num_classes, num_i
     Ensures all classes are represented in saved samples
     """
     model.eval()
-    images_base_dir = '/project/def-arashmoh/shahab33/Msc/Tab2img/imageout'
+    images_base_dir = os.path.join(os.path.dirname(__file__), 'results', 'images')
     images_dir = os.path.join(images_base_dir, dataset_name)
     os.makedirs(images_dir, exist_ok=True)
     

@@ -24,16 +24,18 @@
 #SBATCH --mail-user=aminhajjr@gmail.com
 #SBATCH --mail-type=END,FAIL
 
-
 #=======================================================================
 # Configuration
 #=======================================================================
 PROJECT_DIR="/project/def-arashmoh/shahab33/Msc"
-TAB2IMG_DIR="$PROJECT_DIR/CVAE"  # 
+TAB2IMG_DIR="$PROJECT_DIR/CVAE"
 
 DATASETS_DIR="$PROJECT_DIR/tabularDataset"
 VENV_PATH="$PROJECT_DIR/venvMsc/bin/activate"
 MAIN_SCRIPT="$TAB2IMG_DIR/run_vif.py"
+
+# Canonical interpretability root (your choice)
+INTERP_ROOT="$PROJECT_DIR/CVAE/interpretability"
 
 # Small datasets for fast CVAE+SHAP debugging
 TEST_DATASETS=(
@@ -155,15 +157,13 @@ for dataset in "${TEST_DATASETS[@]}"; do
     echo "Dataset path: $DATASET_PATH"
     echo "Data file:   $DATA_FILE"
     echo ""
+    echo "Interpretability root: $INTERP_ROOT"
 
     START_TIME=$(date +%s)
 
     LOG_FILE="/tmp/test_${dataset}_${SLURM_JOB_ID}.log"
 
-   
-        # Define interpretability output directory
-    INTERP_ROOT="$PROJECT_DIR/CVAE/results/interpretability"
-
+    # Run main script with canonical interpretability root
     python "$MAIN_SCRIPT" \
         --data "$DATA_FILE" \
         --num_images 5 \
@@ -187,19 +187,17 @@ for dataset in "${TEST_DATASETS[@]}"; do
 
         if [ -n "$SUMMARY_JSON" ]; then
             TAB_ACC=$(python - << EOF
-import json,sys
+import json
 data=json.loads('''$SUMMARY_JSON''')
 print(data.get("best_accuracy", "NA"))
 EOF
 )
             AUC_VAL=$(python - << EOF
-import json,sys
+import json
 data=json.loads('''$SUMMARY_JSON''')
 print(data.get("best_auc", "NA"))
 EOF
 )
-            # For image accuracy you currently log "Img Acc" in epoch prints;
-            # parse the last occurrence as a proxy.
             IMG_ACC=$(grep "Img Acc" "$LOG_FILE" | tail -1 | grep -oP '\d+\.\d+' | tail -1)
 
             DATASET_NAMES+=("$dataset")
@@ -212,12 +210,12 @@ EOF
             echo "   ⚠ No RESULTS_JSON block found in log (cannot parse metrics)."
         fi
 
-        # Check for Dual SHAP outputs
-        INTERP_DIR="$dataset/dual_shap_interpretability"
+        # Check for Dual SHAP outputs at the canonical root
+        INTERP_DIR="$INTERP_ROOT/$dataset/dual_shap_interpretability"
 
         if [ -d "$INTERP_DIR" ]; then
             echo ""
-            echo "Dual SHAP files generated:"
+            echo "Dual SHAP files generated in: $INTERP_DIR"
             CSV_COUNT=$(find "$INTERP_DIR" -name "*.csv" | wc -l)
             PNG_COUNT=$(find "$INTERP_DIR" -name "*.png" | wc -l)
             NPY_COUNT=$(find "$INTERP_DIR" -name "*.npy" | wc -l)
@@ -275,8 +273,9 @@ fi
 if [ $SUCCESS_COUNT -gt 0 ]; then
     echo "Interpretability outputs are in:"
     for dataset in "${TEST_DATASETS[@]}"; do
-        if [ -d "$dataset/dual_shap_interpretability" ]; then
-            echo "  • $dataset/dual_shap_interpretability/"
+        INTERP_DIR="$INTERP_ROOT/$dataset/dual_shap_interpretability"
+        if [ -d "$INTERP_DIR" ]; then
+            echo "  • $INTERP_DIR"
         fi
     done
 fi
@@ -293,4 +292,13 @@ if [ ${#DATASET_NAMES[@]} -gt 0 ]; then
         echo "Date: $(date)"
         echo ""
         printf "%-40s %10s %10s %10s\n" "Dataset" "Tabular" "Image" "AUC"
-        echo
+        echo ""
+        for i in "${!DATASET_NAMES[@]}"; do
+            printf "%-40s %9s%% %9s%% %9s\n" \
+                "${DATASET_NAMES[$i]}" \
+                "${TAB_ACCURACIES[$i]}" \
+                "${IMG_ACCURACIES[$i]}" \
+                "${AUC_VALUES[$i]}"
+        done
+    } > "$RESULTS_FILE"
+fi

@@ -160,9 +160,14 @@ for dataset in "${TEST_DATASETS[@]}"; do
 
     LOG_FILE="/tmp/test_${dataset}_${SLURM_JOB_ID}.log"
 
+   
+        # Define interpretability output directory
+    INTERP_ROOT="$PROJECT_DIR/CVAE/results/interpretability"
+
     python "$MAIN_SCRIPT" \
         --data "$DATA_FILE" \
         --num_images 5 \
+        --interp_root "$INTERP_ROOT" \
         2>&1 | tee "$LOG_FILE"
 
     EXIT_CODE=${PIPESTATUS[0]}

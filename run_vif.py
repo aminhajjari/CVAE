@@ -46,16 +46,15 @@ def calculate_dual_shap_interpretability(model, test_loader, device, n_features,
     print("\n[1/5] Collecting background data for SHAP baseline...")
     background_tab = []
     background_img = []
-    n_background = 100  # Standard SHAP recommendation
-    
+    n_samples = 100  # Fixed size for both background & test
     for tab_data, _, img_data, _ in test_loader:
         background_tab.append(tab_data)
         background_img.append(img_data.view(-1, 28*28))
-        if len(background_tab) * len(tab_data) >= n_background:
+        if len(background_tab) * len(tab_data) >= n_samples:
             break
-    
-    background_tab = torch.cat(background_tab, dim=0)[:n_background].to(device)
-    background_img = torch.cat(background_img, dim=0)[:n_background].to(device)
+    background_tab = torch.cat(background_tab, dim=0)[:n_samples].to(device)
+    background_img = torch.cat(background_img, dim=0)[:n_samples].to(device)
+
     print(f"   Background samples collected: {len(background_tab)}")
     
     # ============================================================
@@ -73,13 +72,13 @@ def calculate_dual_shap_interpretability(model, test_loader, device, n_features,
         test_img.append(img_data.view(-1, 28*28))
         test_labels_tab.append(tab_label)
         test_labels_img.append(img_label)
-        if len(test_tab) * len(tab_data) >= n_test:
+        if len(test_tab) * len(tab_data) >= n_samples:  # Match background size
             break
-    
-    test_tab = torch.cat(test_tab, dim=0)[:n_test]
-    test_img = torch.cat(test_img, dim=0)[:n_test]
-    test_labels_tab = torch.cat(test_labels_tab, dim=0)[:n_test]
-    test_labels_img = torch.cat(test_labels_img, dim=0)[:n_test]
+    test_tab = torch.cat(test_tab, dim=0)[:n_samples]
+    test_img = torch.cat(test_img, dim=0)[:n_samples]
+    test_labels_tab = torch.cat(test_labels_tab, dim=0)[:n_samples]
+    test_labels_img = torch.cat(test_labels_img, dim=0)[:n_samples]
+
     print(f"   Test samples to explain: {len(test_tab)}")
     
     # ============================================================
@@ -87,39 +86,31 @@ def calculate_dual_shap_interpretability(model, test_loader, device, n_features,
     # ============================================================
     print("\n[3/5] Creating SHAP prediction wrappers...")
     
-    def predict_img_from_tab(tab_inputs):
-        """Predict image class from tabular features"""
+   def predict_img_from_tab(tab_inputs):
+       
         np.random.seed(42)
         torch.manual_seed(42)
-
         tab_inputs_tensor = torch.tensor(tab_inputs, dtype=torch.float32).to(device)
         batch_size = len(tab_inputs_tensor)
-
-        # Use stored background images as image input
-        img_inputs_tensor = background_img[:batch_size]  # shape: (batch_size, 28*28)
-
+        # Repeat background to handle any batch_size
+        img_inputs_tensor = background_img.repeat(batch_size // len(background_img) + 1, 1)[:batch_size]
         with torch.no_grad():
             _, _, img_pred, _, _ = model(img_inputs_tensor, tab_inputs_tensor)
-            probs = torch.softmax(img_pred, dim=1)
+            return torch.softmax(img_pred, dim=1).cpu().numpy()
 
-        return probs.cpu().numpy()
 
 
     def predict_tab_from_tab(tab_inputs):
-        """Predict tabular class from tabular features"""
         np.random.seed(42)
         torch.manual_seed(42)
-
         tab_inputs_tensor = torch.tensor(tab_inputs, dtype=torch.float32).to(device)
         batch_size = len(tab_inputs_tensor)
-
-        img_inputs_tensor = background_img[:batch_size]
-
+        # Repeat background to handle any batch_size
+        img_inputs_tensor = background_img.repeat(batch_size // len(background_img) + 1, 1)[:batch_size]
         with torch.no_grad():
             _, tab_pred, _, _, _ = model(img_inputs_tensor, tab_inputs_tensor)
-            probs = torch.softmax(tab_pred, dim=1)
+            return torch.softmax(tab_pred, dim=1).cpu().numpy()
 
-        return probs.cpu().numpy()
 
 
     

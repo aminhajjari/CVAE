@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Batch processor for Table2Image-VIF across all OpenML datasets
-Enhanced with Weight Decay + Dual SHAP Interpretability
+Batch processor for CVAE across all tabular datasets
+Enhanced with ADOPT Optimizer + Dual SHAP Interpretability
 """
 
 import os
@@ -28,7 +28,7 @@ def create_output_structure(base_output_dir, job_id):
         'csv': os.path.join(run_dir, 'csv'),
         'latex': os.path.join(run_dir, 'latex'),
         'logs': os.path.join(run_dir, 'logs'),
-        'interpretability': os.path.join(run_dir, 'interpretability')  # 🆕 Centralized SHAP
+        'interpretability': os.path.join(run_dir, 'interpretability')
     }
     
     for subdir in subdirs.values():
@@ -37,20 +37,20 @@ def create_output_structure(base_output_dir, job_id):
     # Create README with run information
     readme_path = os.path.join(run_dir, 'README.txt')
     with open(readme_path, 'w') as f:
-        f.write(f"Table2Image-VIF Batch Processing Results\n")
+        f.write(f"CVAE Batch Processing Results\n")
         f.write(f"="*50 + "\n\n")
         f.write(f"Job ID: {job_id}\n")
         f.write(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"\nConfiguration:\n")
-        f.write(f"  - Weight Decay: 1e-4 (AdamW optimizer)\n")
+        f.write(f"  - Model: CVAE (Conditional Variational Autoencoder)\n")
+        f.write(f"  - Optimizer: ADOPT (decoupled weight decay)\n")
+        f.write(f"  - Loss: Reconstruction + Classification + KL divergence\n")
         f.write(f"  - Dual SHAP Interpretability: Enabled\n")
-        f.write(f"  - Model Saving: Disabled\n")
         f.write(f"\nFolder Structure:\n")
         f.write(f"  csv/              - Results in CSV format\n")
         f.write(f"  latex/            - LaTeX tables for paper\n")
         f.write(f"  logs/             - Processing logs (JSONL format)\n")
         f.write(f"  interpretability/ - Dual SHAP outputs (9 files per dataset)\n")
-        f.write(f"\nImages saved to: /project/def-arashmoh/shahab33/Msc/Tab2Vis/imageout/\n")
     
     return run_dir, subdirs
 
@@ -81,7 +81,7 @@ def find_datasets(datasets_dir):
 
 def validate_interpretability_files(dataset_name, interp_root):
     """
-    🆕 Validate that all 9 dual SHAP files are present
+    Validate that all 9 dual SHAP files are present
     """
     interp_dir = os.path.join(interp_root, dataset_name, 'dual_shap_interpretability')
     
@@ -118,7 +118,7 @@ def validate_interpretability_files(dataset_name, interp_root):
 
 def run_single_dataset(dataset_path, subdirs, script_path, timeout):
     """
-    Run Table2Image-VIF on a single dataset with interpretability
+    Run CVAE on a single dataset with interpretability
     """
     dataset_name = dataset_path.parent.name
 
@@ -127,19 +127,18 @@ def run_single_dataset(dataset_path, subdirs, script_path, timeout):
     print(f"{'='*70}")
     print(f"Folder: {dataset_path.parent.name}")
     print(f"File: {dataset_path.name}")
-    #print(f"Features: Weight Decay (1e-4) + Dual SHAP Interpretability")
 
-    # --- per‑dataset overrides (CIFAR‑10 special case) ---
+    # Per-dataset overrides
     effective_timeout = timeout
     num_images = '5'
 
-    # Adjust these names if your CIFAR folder/file is different
+    # Special handling for large datasets
     if dataset_name.lower() in ['cifar', 'cifar-10', 'cifar10']:
-        print(f"🔧 Detected CIFAR‑10 – increasing timeout and reducing images per class")
-        effective_timeout = max(timeout, 14400)  # at least 4 hours
-        num_images = '3'                          # lighter interpretability for CIFAR
+        print(f"🔧 Detected CIFAR-10 – increasing timeout")
+        effective_timeout = max(timeout, 14400)  # 4 hours
+        num_images = '3'
 
-    # Build command with per‑dataset num_images
+    # Build command
     cmd = [
         'python', script_path,
         '--data', str(dataset_path),
@@ -169,13 +168,12 @@ def run_single_dataset(dataset_path, subdirs, script_path, timeout):
                     json_end = stdout.find("RESULTS_JSON_END")
                     json_str = stdout[json_start:json_end].strip()
                     results_data = json.loads(json_str)
-                    print(f"📊 Tabular Accuracy: {results_data.get('best_accuracy', 0):.2f}%")
+                    print(f"📊 Accuracy: {results_data.get('best_accuracy', 0):.2f}%")
                     print(f"📊 AUC: {results_data.get('best_auc', 0):.4f}")
-                    print(f"🖼️  Images: {results_data.get('images_dir', 'N/A')}")
             except Exception as e:
                 print(f"⚠️  Could not parse results: {e}")
             
-            # 🆕 Validate interpretability files
+            # Validate interpretability files
             is_complete, file_count, status = validate_interpretability_files(
                 dataset_name, 
                 subdirs['interpretability']
@@ -213,7 +211,6 @@ def run_single_dataset(dataset_path, subdirs, script_path, timeout):
     except subprocess.TimeoutExpired:
         elapsed = time.time() - start_time
         print(f"⏱️  TIMEOUT after {elapsed:.1f}s ({effective_timeout}s limit)")
-
         return {
             'status': 'timeout',
             'dataset': dataset_name,
@@ -286,13 +283,13 @@ def create_summary_tables(df, subdirs, run_dir):
     df.to_csv(csv_detailed_path, index=False)
     print(f"✅ Detailed results: {csv_detailed_path}")
     
-    # ========== 3. 🆕 ENHANCED STATISTICS CSV ==========
+    # ========== 3. ENHANCED STATISTICS CSV ==========
     stats_data = {
         'Metric': [
             'Average Accuracy', 'Std Accuracy', 'Average AUC', 'Std AUC',
             'Best Accuracy', 'Worst Accuracy', 'Median Accuracy',
             'Datasets >90%', 'Datasets >95%', 'Datasets >99%',
-            'Configuration', 'Weight Decay', 'Interpretability'
+            'Model', 'Optimizer', 'Interpretability'
         ],
         'Value': [
             f"{avg_accuracy:.2f}",
@@ -305,8 +302,8 @@ def create_summary_tables(df, subdirs, run_dir):
             len(summary_df[summary_df['best_accuracy'] > 90]),
             len(summary_df[summary_df['best_accuracy'] > 95]),
             len(summary_df[summary_df['best_accuracy'] > 99]),
-            'AdamW + VIF Initialization',
-            '1e-4',
+            'CVAE (Conditional VAE)',
+            'ADOPT (decoupled WD)',
             'Dual SHAP (9 files/dataset)'
         ]
     }
@@ -318,13 +315,13 @@ def create_summary_tables(df, subdirs, run_dir):
     # ========== 4. LATEX TABLE ==========
     latex_path = os.path.join(subdirs['latex'], 'results_latex.txt')
     with open(latex_path, 'w') as f:
-        f.write("% LaTeX Table for Paper - Table2Image-VIF Results\n")
-        f.write("% With Weight Decay (1e-4) + Dual SHAP Interpretability\n\n")
+        f.write("% LaTeX Table for Paper - CVAE Results\n")
+        f.write("% With ADOPT Optimizer + Dual SHAP Interpretability\n\n")
         
         f.write("\\begin{table}[htbp]\n")
         f.write("\\centering\n")
-        f.write("\\caption{Table2Image-VIF Performance on OpenML-CC18 Benchmark}\n")
-        f.write("\\label{tab:results}\n")
+        f.write("\\caption{CVAE Performance on Tabular Datasets}\n")
+        f.write("\\label{tab:cvae_results}\n")
         f.write("\\begin{tabular}{lrrrccc}\n")
         f.write("\\hline\n")
         f.write("\\textbf{Dataset} & \\textbf{N} & \\textbf{Features} & "
@@ -356,17 +353,16 @@ def create_summary_tables(df, subdirs, run_dir):
         f.write("\\end{tabular}\n")
         f.write("\\end{table}\n")
         
-        # 🆕 Add note about robustness
         f.write("\n% Note: Results obtained with:\n")
-        f.write("% - Weight decay (lambda=1e-4) for improved generalization\n")
-        f.write("% - Dual SHAP interpretability for cross-modal and within-modal feature importance\n")
+        f.write("% - CVAE (Conditional Variational Autoencoder)\n")
+        f.write("% - ADOPT optimizer with decoupled weight decay\n")
+        f.write("% - Dual SHAP interpretability for feature importance\n")
     
     print(f"✅ LaTeX table: {latex_path}")
     
-    # ========== 5. 🆕 INTERPRETABILITY SUMMARY ==========
+    # ========== 5. INTERPRETABILITY SUMMARY ==========
     interp_summary_path = os.path.join(subdirs['csv'], 'interpretability_summary.csv')
     
-    # Check interpretability completion
     interp_data = []
     for dataset_name in summary_df['dataset']:
         is_complete, file_count, status = validate_interpretability_files(
@@ -389,7 +385,7 @@ def create_summary_tables(df, subdirs, run_dir):
     
     # ========== 6. PRINT SUMMARY ==========
     print(f"\n{'='*70}")
-    print(f"SUMMARY STATISTICS (With Weight Decay 1e-4)")
+    print(f"SUMMARY STATISTICS (CVAE + ADOPT)")
     print(f"{'='*70}")
     print(f"Total datasets: {len(summary_df)}")
     print(f"")
@@ -419,7 +415,7 @@ def create_summary_tables(df, subdirs, run_dir):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Batch process all OpenML datasets with Table2Image-VIF + Interpretability'
+        description='Batch process all tabular datasets with CVAE + Dual SHAP'
     )
     parser.add_argument('--datasets_dir', type=str, required=True,
                         help='Directory containing dataset folders')
@@ -438,8 +434,8 @@ def main():
     
     # Create organized output structure
     print(f"{'='*70}")
-    print(f"TABLE2IMAGE-VIF BATCH PROCESSOR")
-    print(f"Configuration: Weight Decay (1e-4) + Dual SHAP Interpretability")
+    print(f"CVAE BATCH PROCESSOR")
+    print(f"Configuration: ADOPT Optimizer + Dual SHAP Interpretability")
     print(f"{'='*70}")
     run_dir, subdirs = create_output_structure(args.output_base, args.job_id)
     print(f"Output directory: {run_dir}")

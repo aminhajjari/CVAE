@@ -10,13 +10,16 @@
 #   - Robustness on small tabular datasets
 #=======================================================================
 
+
 #SBATCH --account=def-arashmoh
-#SBATCH --job-name=CVAE_ADOPT_DEBUG
+#SBATCH --job-name=T2I_VIF_PROD
 #SBATCH --nodes=1
-#SBATCH --gpus-per-node=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
-#SBATCH --time=01:00:00
+#SBATCH --gpus-per-node=a100:1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --time=96:00:00
+
+
 
 #SBATCH --output=/project/def-arashmoh/shahab33/Msc/CVAE/job_logs/cvae_debug_%j.out
 #SBATCH --error=/project/def-arashmoh/shahab33/Msc/CVAE/job_logs/cvae_debug_%j.err
@@ -37,12 +40,7 @@ MAIN_SCRIPT="$TAB2IMG_DIR/run_vif.py"
 # Canonical interpretability root (your choice)
 INTERP_ROOT="$PROJECT_DIR/CVAE/interpretability"
 
-# Small datasets for fast CVAE+SHAP debugging
-TEST_DATASETS=(
-    "balance-scale"
-    "tic-tac-toe"
-    "blood-transfusion-service-center"
-)
+
 
 #=======================================================================
 # Job Information

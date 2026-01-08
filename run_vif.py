@@ -84,10 +84,13 @@ def calculate_dual_shap_interpretability(model, test_loader, device, n_features,
     # ============================================================
     # STEP 3: Define Prediction Wrappers for SHAP
     # ============================================================
+    # ============================================================
+    # STEP 3: Define Prediction Wrappers for SHAP
+    # ============================================================
     print("\n[3/5] Creating SHAP prediction wrappers...")
     
-   def predict_img_from_tab(tab_inputs):
-       
+    def predict_img_from_tab(tab_inputs):
+        """Predict image labels from tabular features"""
         np.random.seed(42)
         torch.manual_seed(42)
         tab_inputs_tensor = torch.tensor(tab_inputs, dtype=torch.float32).to(device)
@@ -98,9 +101,8 @@ def calculate_dual_shap_interpretability(model, test_loader, device, n_features,
             _, _, img_pred, _, _ = model(img_inputs_tensor, tab_inputs_tensor)
             return torch.softmax(img_pred, dim=1).cpu().numpy()
 
-
-
     def predict_tab_from_tab(tab_inputs):
+        """Predict tabular labels from tabular features"""
         np.random.seed(42)
         torch.manual_seed(42)
         tab_inputs_tensor = torch.tensor(tab_inputs, dtype=torch.float32).to(device)
@@ -110,9 +112,6 @@ def calculate_dual_shap_interpretability(model, test_loader, device, n_features,
         with torch.no_grad():
             _, tab_pred, _, _, _ = model(img_inputs_tensor, tab_inputs_tensor)
             return torch.softmax(tab_pred, dim=1).cpu().numpy()
-
-
-
     
     print("   ✓ Prediction wrappers created")
     # Warn user about computational complexity

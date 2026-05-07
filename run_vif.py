@@ -22,23 +22,18 @@ from datetime import datetime
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 import warnings
 import scipy.io.arff as arff
-import shap 
 from tqdm import tqdm
-from adopt import ADOPT  
-
-
+from adopt import ADOPT
 
 
 # ========== ARGUMENT PARSER ==========
 parser = argparse.ArgumentParser(description="Welcome to Table2Image")
-parser.add_argument('--data', type=str, required=True, 
+parser.add_argument('--data', type=str, required=True,
                    help='Path to the dataset (csv/arff/data)')
 parser.add_argument('--save_dir', type=str, required=False, default=None,
                    help='Directory to save results (optional, for compatibility)')
 parser.add_argument('--num_images', type=int, default=20,
                    help='Number of sample images to save (default: 20)')
-parser.add_argument('--interp_root', type=str, default=None,  # 🆕 NEW
-                   help='Root directory for interpretability results (optional)')
 args = parser.parse_args()
 
 # ========== PARAMETERS ==========
@@ -49,20 +44,7 @@ NUM_IMAGES_TO_SAVE = min(args.num_images, 20)  # Cap at 20
 data_path = args.data
 file_name = os.path.basename(os.path.dirname(data_path))
 
-# 🆕 NEW SECTION STARTS HERE
-if args.interp_root is not None:
-    INTERP_ROOT = args.interp_root
-    os.makedirs(INTERP_ROOT, exist_ok=True)
-    csv_name = os.path.join(INTERP_ROOT, file_name)
-    print(f"[INFO] Interpretability results will be saved to: {csv_name}/dual_shap_interpretability/")
-else:
-    csv_name = file_name
-    print(f"[INFO] Interpretability results will be saved to: {file_name}/dual_shap_interpretability/")
-# 🆕 NEW SECTION ENDS HERE
-
 DATASET_ROOT = '/project/def-arashmoh/shahab33/Msc/datasets'
-
-
 
 USE_CUDA = torch.cuda.is_available()
 DEVICE = torch.device('cuda' if USE_CUDA else 'cpu')
@@ -79,11 +61,11 @@ print(f"{'='*70}\n")
 def load_dataset(file_path):
     """Auto-detect file format and load dataset"""
     file_ext = os.path.splitext(file_path)[1].lower()
-    
+
     if file_ext == '.csv':
         print(f"[INFO] Loading CSV file: {file_path}")
         return pd.read_csv(file_path)
-    
+
     elif file_ext == '.arff':
         print(f"[INFO] Loading ARFF file: {file_path}")
         try:
@@ -96,19 +78,19 @@ def load_dataset(file_path):
                     except AttributeError:
                         pass
             print(f"[INFO] ARFF attributes: {list(meta.names())[:10]}...")
-            return df, meta  # Return metadata too
+            return df, meta
         except Exception as e:
             print(f"[WARNING] scipy.io.arff failed: {e}")
             try:
                 import arff as arff_lib
                 with open(file_path, 'r') as f:
                     dataset = arff_lib.load(f)
-                df = pd.DataFrame(dataset['data'], 
+                df = pd.DataFrame(dataset['data'],
                                 columns=[attr[0] for attr in dataset['attributes']])
-                return df, None  # No metadata from backup parser
+                return df, None
             except Exception as e2:
                 raise Exception(f"All ARFF parsers failed. Errors: (1) {e}, (2) {e2}")
-    
+
     elif file_ext == '.data':
         print(f"[INFO] Loading .data file: {file_path}")
         for sep in [',', ' ', '\t', ';']:
@@ -156,11 +138,8 @@ if arff_meta is not None:
     print("[INFO] Detecting target column from ARFF metadata...")
     try:
         attr_names = list(arff_meta.names())
-        # ARFF convention: last attribute is typically the class/target
         target_col = attr_names[-1]
         print(f"[INFO] ARFF metadata indicates target: '{target_col}'")
-        
-        # Verify this column exists in dataframe
         if target_col not in df.columns:
             print(f"[WARNING] Metadata target '{target_col}' not found in dataframe. Falling back...")
             target_col = None
@@ -193,29 +172,26 @@ print(f"[INFO] Target column: {target_col}")
 # ========== EARLY CLASS DISTRIBUTION CHECK ==========
 print(f"\n[INFO] Checking class distribution before preprocessing...")
 if target_col in df.columns:
-    # Show raw distribution
     target_value_counts = df[target_col].value_counts()
     print(f"[INFO] Raw class distribution:")
     for val, count in target_value_counts.items():
         print(f"  Class '{val}': {count} samples")
-    
-    # Check for classes with too few samples
+
     min_samples_per_class = 10
     rare_classes = target_value_counts[target_value_counts < min_samples_per_class]
-    
+
     if len(rare_classes) > 0:
         print(f"\n[WARNING] Found {len(rare_classes)} class(es) with <{min_samples_per_class} samples:")
         for cls, count in rare_classes.items():
             print(f"  Class '{cls}': {count} samples")
-        
-        # Filter out rare classes
+
         valid_classes = target_value_counts[target_value_counts >= min_samples_per_class].index.tolist()
-        
+
         if len(valid_classes) < 2:
             print(f"[ERROR] Only {len(valid_classes)} valid class(es) remain after filtering. Need at least 2.")
             print(f"[ERROR] Skipping dataset: insufficient samples per class.")
             exit(0)
-        
+
         print(f"[INFO] Filtering dataset to keep only classes with >={min_samples_per_class} samples...")
         original_size = len(df)
         df = df[df[target_col].isin(valid_classes)]
@@ -223,8 +199,7 @@ if target_col in df.columns:
         pct_removed = ((original_size - filtered_size) / original_size) * 100
         print(f"   ⚠️  WARNING: Removed {original_size - filtered_size} samples ({pct_removed:.1f}% of original data)")
         print(f"[INFO] New dataset shape: {df.shape}")
-        
-        # Show new distribution
+
         new_distribution = df[target_col].value_counts()
         print(f"[INFO] Filtered class distribution:")
         for val, count in new_distribution.items():
@@ -328,11 +303,11 @@ X_train, X_test, y_train, y_test = train_test_split(
 print(f"[INFO] Train samples: {len(X_train)}, Test samples: {len(X_test)}")
 
 train_tabular_dataset = TensorDataset(
-    torch.tensor(X_train, dtype=torch.float32), 
+    torch.tensor(X_train, dtype=torch.float32),
     torch.tensor(y_train, dtype=torch.long)
 )
 test_tabular_dataset = TensorDataset(
-    torch.tensor(X_test, dtype=torch.float32), 
+    torch.tensor(X_test, dtype=torch.float32),
     torch.tensor(y_test, dtype=torch.long)
 )
 
@@ -366,9 +341,9 @@ num_samples_needed = train_tabular_label_counts.tolist()
 num_samples_needed_test = test_tabular_label_counts.tolist()
 valid_labels = set(range(num_classes))
 
-filtered_fashion = Subset(fashionmnist_dataset, 
+filtered_fashion = Subset(fashionmnist_dataset,
     [i for i, (_, label) in enumerate(fashionmnist_dataset) if label in valid_labels])
-filtered_mnist = Subset(modified_mnist_dataset, 
+filtered_mnist = Subset(modified_mnist_dataset,
     [i for i, (_, label) in enumerate(modified_mnist_dataset) if label in valid_labels])
 combined_dataset = ConcatDataset([filtered_fashion, filtered_mnist])
 
@@ -482,7 +457,6 @@ class CVAEWithTabEmbedding(nn.Module):
         super().__init__()
         img_dim = 28 * 28
 
-        # Encoder: image + tabular → shared representation
         self.enc_img = nn.Sequential(
             nn.Linear(img_dim, 256),
             nn.ReLU(),
@@ -500,14 +474,12 @@ class CVAEWithTabEmbedding(nn.Module):
         self.fc_mu = nn.Linear(enc_latent_in, latent_size)
         self.fc_logvar = nn.Linear(enc_latent_in, latent_size)
 
-        # Decoder: latent + tabular → reconstructed image
         self.dec = nn.Sequential(
             nn.Linear(latent_size + tab_latent_size, 256),
             nn.ReLU(),
             nn.Linear(256, img_dim),
         )
 
-        # Optional classifiers from latent
         self.tab_classifier = nn.Linear(latent_size, num_classes)
         self.img_classifier = nn.Linear(latent_size, num_classes)
 
@@ -531,11 +503,9 @@ class CVAEWithTabEmbedding(nn.Module):
         return recon
 
     def forward(self, img_x, tab_x):
-        # img_x: real image flattened, tab_x: tabular
         mu, logvar = self.encode(img_x, tab_x)
         z = self.reparameterize(mu, logvar)
         recon_x = self.decode(z, tab_x)
-
         tab_logits = self.tab_classifier(z)
         img_logits = self.img_classifier(z)
         return recon_x, tab_logits, img_logits, mu, logvar
@@ -551,28 +521,21 @@ cvae = CVAEWithTabEmbedding(
 ).to(DEVICE)
 optimizer = ADOPT(
     cvae.parameters(),
-    lr=1e-3,                # start with 1e-3 as in the ADOPT examples
-    betas=(0.9, 0.9999),    # recommended in the paper
-    eps=1e-6,               # slightly larger eps than typical AdamW
-    weight_decay=1e-4,      # same as your AdamW
-    decouple=True,          # because you previously used AdamW
+    lr=1e-3,
+    betas=(0.9, 0.9999),
+    eps=1e-6,
+    weight_decay=1e-4,
+    decouple=True,
 )
-
 
 print(f"[INFO] Model created with {sum(p.numel() for p in cvae.parameters())} parameters")
 
 def loss_function(recon_x, x, tab_pred, tab_labels, img_pred, img_labels, mu, logvar, beta=1.0):
-    # Reconstruction (MSE; use BCE if images are in [0,1])
     recon_loss = F.mse_loss(recon_x, x)
-
-    # Classification losses
     tab_loss = F.cross_entropy(tab_pred, tab_labels)
     img_loss = F.cross_entropy(img_pred, img_labels)
-
-    # KL divergence term
     kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1)
     kl = kl.mean()
-
     return recon_loss + tab_loss + img_loss + beta * kl
 
 
@@ -580,13 +543,12 @@ def train(model, train_data_loader, optimizer, epoch):
     model.train()
     train_loss = 0
     for tab_data, tab_label, img_data, img_label in train_data_loader:
-        img_data = img_data.view(-1, 28*28).to(DEVICE)   # real images
+        img_data = img_data.view(-1, 28*28).to(DEVICE)
         tab_data = tab_data.to(DEVICE)
         img_label = img_label.to(DEVICE).long()
         tab_label = tab_label.to(DEVICE).long()
 
         optimizer.zero_grad()
-        # Feed real image to the encoder, not random noise
         recon_x, tab_pred, img_pred, mu, logvar = model(img_data, tab_data)
         loss = loss_function(
             recon_x, img_data,
@@ -612,7 +574,7 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
 
     with torch.no_grad():
         for tab_data, tab_label, img_data, img_label in test_data_loader:
-            img_data = img_data.view(-1, 28*28).to(DEVICE)   # real images
+            img_data = img_data.view(-1, 28*28).to(DEVICE)
             tab_data = tab_data.to(DEVICE)
             img_label = img_label.to(DEVICE).long()
             tab_label = tab_label.to(DEVICE).long()
@@ -638,11 +600,10 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
             correct_img_total += (img_predicted == img_label).sum().item()
             total += tab_label.size(0)
 
-    
     test_loss /= len(test_data_loader)
     tab_accuracy_total = 100 * correct_tab_total / total
     img_accuracy_total = 100 * correct_img_total / total
-    
+
     all_tab_preds_arr = np.array(all_tab_preds)
     all_img_preds_arr = np.array(all_img_preds)
     all_tab_labels_arr = np.array(all_tab_labels)
@@ -657,7 +618,7 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
                 tab_auc = roc_auc_score(all_tab_labels_arr, all_tab_preds_arr, multi_class="ovr", average="macro")
         except Exception as e:
             print(f"[WARNING] Tab AUC calculation failed: {e}")
-    
+
     if not (np.isnan(all_img_preds_arr).any() or np.isinf(all_img_preds_arr).any()):
         try:
             if num_classes == 2:
@@ -676,8 +637,8 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
 
     return best_accuracy, best_auc, best_epoch, test_loss, tab_accuracy_total, img_accuracy_total
 
-# ========== IMAGE SAVING FUNCTION ==========
 
+# ========== IMAGE SAVING FUNCTION ==========
 def save_sample_images(model, test_data_loader, dataset_name, num_classes, num_images=20):
     """
     Save reconstructed images with DIVERSE labels
@@ -687,180 +648,147 @@ def save_sample_images(model, test_data_loader, dataset_name, num_classes, num_i
     images_base_dir = os.path.join(os.path.dirname(__file__), 'results', 'images')
     images_dir = os.path.join(images_base_dir, dataset_name)
     os.makedirs(images_dir, exist_ok=True)
-    
-    # Calculate samples per class (ensure diversity)
+
     samples_per_class = max(1, num_images // num_classes)
     total_to_save = samples_per_class * num_classes
-    
+
     print(f"\n[INFO] Generating {total_to_save} sample images...")
     print(f"[INFO] Strategy: {samples_per_class} samples × {num_classes} classes")
-    
-    # Storage for images by class
+
     class_samples = {label: [] for label in range(num_classes)}
-    
-    # Collect samples for each class
+
     with torch.no_grad():
         for tab_data, tab_label, img_data, img_label in test_data_loader:
-            # Check if we have enough samples for all classes
             if all(len(samples) >= samples_per_class for samples in class_samples.values()):
                 break
-                
+
             img_data_flat = img_data.view(-1, 28*28).to(DEVICE)
             tab_data = tab_data.to(DEVICE)
-            
-            # Generate reconstructed images
+
             random_array = np.random.rand(img_data_flat.shape[0], 28*28)
             x_rand = torch.Tensor(random_array).to(DEVICE)
             recon_x, *_ = model(x_rand, tab_data)
 
-            
-            # Store samples by class
             for i in range(len(tab_label)):
                 label = tab_label[i].item()
-                
-                # Only collect if we need more samples for this class
                 if len(class_samples[label]) < samples_per_class:
                     class_samples[label].append({
                         'original': img_data[i].cpu().numpy(),
                         'reconstructed': recon_x[i].cpu().numpy().reshape(28, 28),
                         'label': label
                     })
-    
-    # Flatten samples for saving
+
     all_samples = []
     for label in sorted(class_samples.keys()):
         all_samples.extend(class_samples[label])
-    
+
     num_saved = len(all_samples)
     print(f"[INFO] Collected {num_saved} samples across {num_classes} classes")
-    
-    # Print distribution
+
     print(f"[INFO] Samples per class:")
     for label in range(num_classes):
         count = len(class_samples[label])
         print(f"  Class {label}: {count} samples")
-    
-    # ============ CREATE GRID VISUALIZATION ============
-    num_cols = min(5, num_classes)  # Show up to 5 classes per row
-    num_rows = 2 * num_classes  # 2 rows per class (original + reconstructed)
-    
-    fig, axes = plt.subplots(num_rows, num_cols, 
+
+    # Grid visualization
+    num_cols = min(5, num_classes)
+    num_rows = 2 * num_classes
+
+    fig, axes = plt.subplots(num_rows, num_cols,
                              figsize=(3*num_cols, 2*num_rows))
-    
-    # Handle edge cases for axes dimensions
+
     if num_rows == 1:
         axes = axes.reshape(1, -1)
     elif num_cols == 1:
         axes = axes.reshape(-1, 1)
-    
-    # Plot images organized by class
+
     for class_idx in range(num_classes):
-        samples = class_samples[class_idx][:num_cols]  # Take up to num_cols samples
-        
+        samples = class_samples[class_idx][:num_cols]
+
         for sample_idx, sample in enumerate(samples):
             orig_row = class_idx * 2
             recon_row = class_idx * 2 + 1
-            
-            # Original image
+
             axes[orig_row, sample_idx].imshow(sample['original'].squeeze(), cmap='gray')
             axes[orig_row, sample_idx].set_title(
-                f'Original\nClass {sample["label"]}', 
+                f'Original\nClass {sample["label"]}',
                 fontsize=8, fontweight='bold'
             )
             axes[orig_row, sample_idx].axis('off')
-            
-            # Reconstructed image
+
             axes[recon_row, sample_idx].imshow(sample['reconstructed'], cmap='gray')
             axes[recon_row, sample_idx].set_title(
-                f'Generated\nClass {sample["label"]}', 
+                f'Generated\nClass {sample["label"]}',
                 fontsize=8
             )
             axes[recon_row, sample_idx].axis('off')
-        
-        # Hide unused subplots in this class row
+
         for empty_col in range(len(samples), num_cols):
             axes[orig_row, empty_col].axis('off')
             axes[recon_row, empty_col].axis('off')
-    
-    plt.suptitle(f'{dataset_name} - Image Generation by Class', 
+
+    plt.suptitle(f'{dataset_name} - Image Generation by Class',
                  fontsize=14, fontweight='bold', y=0.995)
     plt.tight_layout()
-    
+
     grid_path = os.path.join(images_dir, 'comparison_grid_by_class.png')
     plt.savefig(grid_path, dpi=150, bbox_inches='tight')
     plt.close()
     print(f"[INFO] Saved class-organized grid to: {grid_path}")
-    
-    # ============ ALSO CREATE RANDOM MIXED GRID ============
-    # Show diversity in a single view
-    random_samples = np.random.choice(len(all_samples), 
-                                     size=min(20, len(all_samples)), 
+
+    # Mixed grid
+    random_samples = np.random.choice(len(all_samples),
+                                     size=min(20, len(all_samples)),
                                      replace=False)
-    
+
     num_random = len(random_samples)
     num_cols_random = min(5, num_random)
     num_rows_random = 2 * ((num_random + num_cols_random - 1) // num_cols_random)
-    
-    fig2, axes2 = plt.subplots(num_rows_random, num_cols_random, 
+
+    fig2, axes2 = plt.subplots(num_rows_random, num_cols_random,
                                figsize=(3*num_cols_random, 3*num_rows_random))
-    
+
     if num_rows_random == 1:
         axes2 = axes2.reshape(1, -1)
     elif num_cols_random == 1:
         axes2 = axes2.reshape(-1, 1)
-    
+
     axes2_flat = axes2.flatten()
-    
+
     for idx, sample_idx in enumerate(random_samples):
         sample = all_samples[sample_idx]
         orig_idx = idx * 2
         recon_idx = idx * 2 + 1
-        
-        # Original
+
         if orig_idx < len(axes2_flat):
             axes2_flat[orig_idx].imshow(sample['original'].squeeze(), cmap='gray')
-            axes2_flat[orig_idx].set_title(
-                f'Original (Class {sample["label"]})', 
-                fontsize=8
-            )
+            axes2_flat[orig_idx].set_title(f'Original (Class {sample["label"]})', fontsize=8)
             axes2_flat[orig_idx].axis('off')
-        
-        # Reconstructed
+
         if recon_idx < len(axes2_flat):
             axes2_flat[recon_idx].imshow(sample['reconstructed'], cmap='gray')
-            axes2_flat[recon_idx].set_title(
-                f'Generated (Class {sample["label"]})', 
-                fontsize=8
-            )
+            axes2_flat[recon_idx].set_title(f'Generated (Class {sample["label"]})', fontsize=8)
             axes2_flat[recon_idx].axis('off')
-    
-    # Hide unused subplots
+
     for idx in range(len(random_samples) * 2, len(axes2_flat)):
         axes2_flat[idx].axis('off')
-    
+
     plt.tight_layout()
     mixed_grid_path = os.path.join(images_dir, 'comparison_grid_mixed.png')
     plt.savefig(mixed_grid_path, dpi=150, bbox_inches='tight')
     plt.close()
     print(f"[INFO] Saved mixed grid to: {mixed_grid_path}")
-    
-    # ============ SAVE INDIVIDUAL IMAGES ============
+
+    # Individual images
     for idx, sample in enumerate(all_samples):
         label = sample['label']
-        
-        # Original
-        orig_path = os.path.join(images_dir, 
-                                f'sample_{idx:02d}_class{label}_original.png')
+        orig_path = os.path.join(images_dir, f'sample_{idx:02d}_class{label}_original.png')
         plt.imsave(orig_path, sample['original'].squeeze(), cmap='gray')
-        
-        # Reconstructed
-        recon_path = os.path.join(images_dir, 
-                                 f'sample_{idx:02d}_class{label}_generated.png')
+        recon_path = os.path.join(images_dir, f'sample_{idx:02d}_class{label}_generated.png')
         plt.imsave(recon_path, sample['reconstructed'], cmap='gray')
-    
+
     print(f"[INFO] Saved {num_saved} individual image pairs")
-    
-    # ============ CREATE CLASS DISTRIBUTION REPORT ============
+
     report_path = os.path.join(images_dir, 'sample_distribution.txt')
     with open(report_path, 'w') as f:
         f.write(f"Image Sample Distribution Report\n")
@@ -880,13 +808,14 @@ def save_sample_images(model, test_data_loader, dataset_name, num_classes, num_i
         f.write(f"  1. comparison_grid_by_class.png - Organized by class\n")
         f.write(f"  2. comparison_grid_mixed.png    - Random mixed view\n")
         f.write(f"  3. sample_*.png                 - Individual images\n")
-    
+
     print(f"[INFO] Saved distribution report to: {report_path}")
     print(f"[INFO] All images saved to: {images_dir}")
-    
+
     return num_saved, images_dir
 
-# ========== TRAINING LOOP (NO MODEL SAVING) ==========
+
+# ========== TRAINING LOOP ==========
 print("\n" + "="*70)
 print("STARTING TRAINING")
 print("="*70)
@@ -900,7 +829,7 @@ for epoch in range(1, EPOCH + 1):
     best_accuracy, best_auc, best_epoch, test_loss, tab_acc, img_acc = test(
         cvae, test_synchronized_loader, epoch, best_accuracy, best_auc, best_epoch
     )
-    
+
     if epoch % 10 == 0 or epoch == 1:
         print(f"[Epoch {epoch:3d}] Train Loss: {train_loss:.4f} | "
               f"Test Loss: {test_loss:.4f} | "
@@ -917,48 +846,6 @@ num_saved, save_dir = save_sample_images(
     cvae, test_synchronized_loader, file_name, num_classes, NUM_IMAGES_TO_SAVE
 )
 
-#######################################################
-# Calculate interpretability (True Dual SHAP)
-#######################################################
-print("\n" + "="*70)
-print("CALCULATING INTERPRETABILITY (Dual SHAP)")
-print("="*70)
-
-# Define required variables
-
-index = "0"  # Default index (or get from args if you add it)
-
-try:
-    shap_results = calculate_dual_shap_interpretability(
-        model=cvae,
-        test_loader=test_synchronized_loader,
-        device=DEVICE,
-        n_features=n_cont_features,
-        num_classes=num_classes,
-        csv_name=csv_name,
-        index=index
-    )
-    
-    print("\n📊 Dual SHAP Feature Importance Summary:")
-    if 'dual_importance' in shap_results:
-        top_features = np.argsort(shap_results['dual_importance'])[::-1][:5]
-        print("\n   Top 5 Most Important Features:")
-        for i, feat_idx in enumerate(top_features, 1):
-            print(f"      {i}. Feature_{feat_idx}: {shap_results['dual_importance'][feat_idx]:.6f}")
-    
-    print("\n✅ Dual SHAP interpretability complete!")
-    
-except Exception as e:
-    print(f"\n❌ Dual SHAP calculation failed: {e}")
-    import traceback
-    traceback.print_exc()
-    print("[INFO] Continuing without interpretability...")
-
-print("="*70 + "\n")
-
-############# END Of Dual SHAP ##########
-
-
 # Output results as JSON to stdout (for batch script to capture)
 results = {
     'dataset': file_name,
@@ -973,7 +860,6 @@ results = {
     'timestamp': datetime.now().isoformat()
 }
 
-# Print JSON result (batch script will capture this)
 print("\n" + "="*70)
 print("RESULTS_JSON_START")
 print(json.dumps(results))

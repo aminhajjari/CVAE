@@ -46,7 +46,6 @@ echo "Configuration:"
 echo "  Model: CVAE (Conditional Variational Autoencoder)"
 echo "  Optimizer: ADOPT (decoupled weight decay)"
 echo "  Loss: Reconstruction + 2×Classification + KL"
-echo "  Dual SHAP: Enabled (9 files/dataset)"
 echo "  Timeout: 2 hours per dataset"
 echo "=========================================="
 echo ""
@@ -115,10 +114,9 @@ echo ""
 echo "Python environment:"
 python --version
 python -c "
-import torch, shap
+import torch
 print(f'PyTorch: {torch.__version__}')
 print(f'CUDA available: {torch.cuda.is_available()}')
-print(f'SHAP: {shap.__version__}')
 if torch.cuda.is_available():
     print(f'GPU: {torch.cuda.get_device_name(0)}')
 
@@ -163,7 +161,6 @@ echo ""
 echo "=========================================="
 echo "🚀 STARTING BATCH PROCESSING"
 echo "=========================================="
-echo "Using run_all_datasets.py (CVAE version)"
 echo ""
 echo "Running command:"
 echo "python $BATCH_SCRIPT \\"
@@ -176,7 +173,6 @@ echo ""
 echo "=========================================="
 echo ""
 
-# Run the batch processor
 python "$BATCH_SCRIPT" \
     --datasets_dir "$DATASETS_DIR" \
     --output_base "$RESULTS_BASE" \
@@ -199,7 +195,7 @@ echo ""
 
 if [ $EXIT_CODE -eq 0 ]; then
     RESULT_DIR=$(find "$RESULTS_BASE" -maxdepth 1 -type d -name "*_JOB${SLURM_JOB_ID}" | head -1)
-    
+
     echo "✅ SUCCESS!"
     echo ""
     echo "📂 Results location:"
@@ -208,31 +204,23 @@ if [ $EXIT_CODE -eq 0 ]; then
     echo "📊 Files generated:"
     echo "    ├── csv/"
     echo "    │   ├── results_summary.csv"
-    echo "    │   ├── statistics.csv"
-    echo "    │   └── interpretability_summary.csv"
+    echo "    │   ├── results_detailed.csv"
+    echo "    │   └── statistics.csv"
     echo "    ├── latex/"
     echo "    │   └── results_latex.txt"
-    echo "    ├── logs/"
-    echo "    │   └── results.jsonl"
-    echo "    └── interpretability/"
-    echo "        └── [dataset]/dual_shap_interpretability/"
+    echo "    └── logs/"
+    echo "        └── results.jsonl"
     echo ""
-    
-    if [ -d "$RESULT_DIR/interpretability" ]; then
-        INTERP_COUNT=$(find "$RESULT_DIR/interpretability" -type d -name "dual_shap_interpretability" | wc -l)
-        echo "🔍 Interpretability: $INTERP_COUNT/$DATASET_COUNT datasets"
-    fi
-    
+
     if [ -f "$RESULT_DIR/csv/statistics.csv" ]; then
-        echo ""
         echo "📊 Quick Statistics:"
         head -5 "$RESULT_DIR/csv/statistics.csv" | column -t -s','
     fi
-    
+
     echo ""
     echo "📧 Completion email sent to: aminhajjr@gmail.com"
     echo "🎉 All $DATASET_COUNT datasets processed with CVAE!"
-    
+
 else
     echo "⚠️  Some datasets may have failed"
     echo ""

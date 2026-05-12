@@ -26,17 +26,19 @@
 #=======================================================================
 BASE_DIR="/home/gkianfar/scratch/Amin/Tab2Vis"
 
-DATASETS_DIR="$BASE_DIR/Unzippeddata"
+DATASETS_DIR="$BASE_DIR/Unzippeddata/CSV"
 
 # ✅ ALL RESULTS + ARTIFACTS HERE
 OUTPUTS_DIR="$BASE_DIR/outputs"
 RESULTS_BASE="$OUTPUTS_DIR/results"
 JOB_LOGS_DIR="$OUTPUTS_DIR/job_logs"
 
-PROJECT_DIR="$BASE_DIR/project"
-CVAE_DIR="$PROJECT_DIR/CVAE"
+# ✅ CHANGED: no more project/ subfolder
+CVAE_DIR="$BASE_DIR/CVAE"
 
-VENV_PATH="$PROJECT_DIR/venvMsc/bin/activate"
+# ✅ CHANGED: venv is now directly under Tab2Vis/
+VENV_PATH="$BASE_DIR/venvMsc/bin/activate"
+
 BATCH_SCRIPT="$CVAE_DIR/run_all_datasets.py"
 MAIN_SCRIPT="$CVAE_DIR/run_vif.py"
 

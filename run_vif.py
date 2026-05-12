@@ -27,7 +27,7 @@ from adopt import ADOPT
 
 
 # ========== ARGUMENT PARSER ==========
-parser = argparse.ArgumentParser(description="Welcome to Table2Image")
+parser = argparse.ArgumentParser(description="Welcome to Tab2Vis")
 parser.add_argument('--data', type=str, required=True,
                    help='Path to the dataset (csv/arff/data)')
 parser.add_argument('--save_dir', type=str, required=False, default=None,
@@ -645,7 +645,7 @@ def save_sample_images(model, test_data_loader, dataset_name, num_classes, num_i
     Ensures all classes are represented in saved samples
     """
     model.eval()
-    images_base_dir = os.path.join(os.path.dirname(__file__), 'results', 'images')
+    images_base_dir = '/home/gkianfar/scratch/Amin/Tab2Vis/outputs/images'
     images_dir = os.path.join(images_base_dir, dataset_name)
     os.makedirs(images_dir, exist_ok=True)
 

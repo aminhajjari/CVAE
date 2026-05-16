@@ -260,6 +260,9 @@ num_classes = len(unique_values)
 value_map = {unique_values[i]: i for i in range(num_classes)}
 y = np.array([value_map[val] for val in y])
 
+if X.shape[1] == 0:
+    print(f"[ERROR] No features left after preprocessing. Skipping dataset.")
+    exit(0)
 n_cont_features = X.shape[1]
 tab_latent_size = n_cont_features + 4
 

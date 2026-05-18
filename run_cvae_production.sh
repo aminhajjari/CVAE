@@ -12,8 +12,7 @@
 #=======================================================================
 #SBATCH --output=/home/gkianfar/scratch/Amin/Tab2Vis/outputs/job_logs/production_%A.out
 #SBATCH --error=/home/gkianfar/scratch/Amin/Tab2Vis/outputs/job_logs/production_%A.err
-#SBATCH --mail-user=aminhajjr@gmail.com
-#SBATCH --mail-type=BEGIN,END,FAIL
+
 #=======================================================================
 
 BASE_DIR="/home/gkianfar/scratch/Amin/Tab2Vis"

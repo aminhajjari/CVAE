@@ -72,7 +72,7 @@ python "$BATCH_SCRIPT" \
     --job_id "$SLURM_JOB_ID" \
     --script_path "$MAIN_SCRIPT" \
     --timeout "$TIMEOUT_DEFAULT" \
-    --resume true                     # Add this if your script supports resume
+    --skip_existing                     
 
 EXIT_CODE=$?
 

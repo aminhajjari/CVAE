@@ -545,7 +545,7 @@ def loss_function(recon_x, x, tab_pred, tab_labels, img_pred, img_labels):
     BCE = F.mse_loss(recon_x, x)
     tab_loss = F.cross_entropy(tab_pred, tab_labels)
     img_loss = F.cross_entropy(img_pred, img_labels)
-    return BCE + tab_loss + img_loss
+    return BCE, tab_loss, img_loss  # return separately, weighting happens outside
 
 def train(model, train_data_loader, optimizer, epoch):
     model.train()

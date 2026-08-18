@@ -413,6 +413,22 @@ train_synchronized_loader = DataLoader(train_synchronized_dataset, batch_size=BA
 test_synchronized_loader = DataLoader(test_synchronized_dataset, batch_size=BATCH_SIZE)
 print(f"[INFO] Synchronized datasets created. Train batches: {len(train_synchronized_loader)}")
 
+#_______________________uncertainty-weighting module__________________
+
+class UncertaintyWeighting(nn.Module):
+    """Learnable homoscedastic uncertainty weighting (Kendall et al., 2018).
+    Learns how much to trust each loss term instead of summing them raw."""
+    def __init__(self, num_tasks=3):
+        super().__init__()
+        self.log_vars = nn.Parameter(torch.zeros(num_tasks))
+
+    def forward(self, losses):
+        total = 0.0
+        for i, loss in enumerate(losses):
+            precision = torch.exp(-self.log_vars[i])
+            total = total + precision * loss + self.log_vars[i]
+        return total
+
 # ========== MODEL DEFINITIONS ==========
 class SimpleCNN(nn.Module):
     def __init__(self, num_classes):

@@ -574,7 +574,9 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
     total = 0
     all_tab_labels, all_tab_preds = [], []
     all_img_labels, all_img_preds = [], []
-
+    all_fused_preds = []          
+    correct_fused_total = 0
+  
     with torch.no_grad():
         for tab_data, tab_label, img_data, img_label in test_data_loader:
             img_data = img_data.view(-1, 28*28).to(DEVICE)

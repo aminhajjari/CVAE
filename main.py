@@ -549,7 +549,7 @@ def loss_function(recon_x, x, tab_pred, tab_labels, img_pred, img_labels):
     img_loss = F.cross_entropy(img_pred, img_labels)
     return BCE, tab_loss, img_loss  # return separately, weighting happens outside
 
-def train(model, train_data_loader, optimizer, epoch):
+def train(model, train_data_loader, optimizer, epoch, weighting):
     model.train()
     train_loss = 0
     for tab_data, tab_label, img_data, img_label in train_data_loader:

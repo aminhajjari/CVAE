@@ -593,10 +593,13 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
             all_tab_preds.extend(tab_probs.cpu().numpy())
             all_img_labels.extend(img_label.cpu().numpy())
             all_img_preds.extend(img_probs.cpu().numpy())
+            all_fused_preds.extend(fused_probs.cpu().numpy())
             tab_predicted = torch.argmax(tab_pred, dim=1)
             img_predicted = torch.argmax(img_pred, dim=1)
+            fused_predicted = torch.argmax(fused_probs, dim=1)
             correct_tab_total += (tab_predicted == tab_label).sum().item()
             correct_img_total += (img_predicted == img_label).sum().item()
+            correct_fused_total += (fused_predicted == tab_label).sum().item()
             total += tab_label.size(0)
     
     test_loss /= len(test_data_loader)

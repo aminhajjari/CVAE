@@ -525,7 +525,9 @@ cae = CAEWithTabEmbedding(
 ).to(DEVICE)
 #optimizer = optim.AdamW(cae.parameters(), lr=0.001, weight_decay=1e-4)
 #optimizer = ADOPT(cae.parameters(), lr=0.001, decouple=True, weight_decay=1e-4)
-optimizer = ADOPT(cae.parameters(), lr=0.001, decouple=True)
+#optimizer = ADOPT(cae.parameters(), lr=0.001, decouple=True)
+weighting = UncertaintyWeighting(num_tasks=3).to(DEVICE)
+optimizer = ADOPT(list(cae.parameters()) + list(weighting.parameters()), lr=0.001, decouple=True)
 
 print(f"[INFO] Model created with {sum(p.numel() for p in cae.parameters())} parameters")
 # ============================================================
@@ -634,14 +636,14 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
         except Exception as e:
             print(f"[WARNING] Img AUC calculation failed: {e}")
 
-    if img_accuracy_total > best_accuracy:
-        best_accuracy = img_accuracy_total
+    if fused_accuracy_total > best_accuracy:
+        best_accuracy = fused_accuracy_total
         best_epoch = epoch
-        print(f"[INFO] New best accuracy: {best_accuracy:.2f}% at epoch {epoch}")
-    if img_auc > best_auc:
-        best_auc = img_auc
+        print(f"[INFO] New best FUSED accuracy: {best_accuracy:.2f}% at epoch {epoch}")
+    if fused_auc > best_auc:
+        best_auc = fused_auc
 
-    return best_accuracy, best_auc, best_epoch, test_loss, tab_accuracy_total, img_accuracy_total
+    return best_accuracy, best_auc, best_epoch, test_loss, tab_accuracy_total, img_accuracy_total, fused_accuracy_total
 
 # ========== IMAGE SAVING FUNCTION ==========
 

@@ -568,7 +568,7 @@ def train(model, train_data_loader, optimizer, epoch, weighting):
         optimizer.step()
     return train_loss / len(train_data_loader)
 
-def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
+def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch, weighting):
     model.eval()
     test_loss = 0
     correct_tab_total = 0

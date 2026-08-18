@@ -607,13 +607,15 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
     test_loss /= len(test_data_loader)
     tab_accuracy_total = 100 * correct_tab_total / total
     img_accuracy_total = 100 * correct_img_total / total
+    fused_accuracy_total = 100 * correct_fused_total / total   # <-- add
     
     all_tab_preds_arr = np.array(all_tab_preds)
     all_img_preds_arr = np.array(all_img_preds)
+    all_fused_preds_arr = np.array(all_fused_preds) 
     all_tab_labels_arr = np.array(all_tab_labels)
     all_img_labels_arr = np.array(all_img_labels)
 
-    tab_auc, img_auc = 0.0, 0.0
+    tab_auc, img_auc, fused_auc = 0.0, 0.0, 0.0 
     if not (np.isnan(all_tab_preds_arr).any() or np.isinf(all_tab_preds_arr).any()):
         try:
             if num_classes == 2:

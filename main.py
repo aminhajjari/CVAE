@@ -584,9 +584,11 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
             random_array = np.random.rand(img_data.shape[0], 28*28)
             x_rand = torch.Tensor(random_array).view(-1, 28*28).to(DEVICE)
             recon_x, tab_pred, img_pred = model(x_rand, tab_data)
-            test_loss += loss_function(recon_x, img_data, tab_pred, tab_label, img_pred, img_label).item()
+            bce, tab_loss, img_loss = loss_function(recon_x, img_data, tab_pred, tab_label, img_pred, img_label)
+            test_loss += weighting([bce, tab_loss, img_loss]).item()
             tab_probs = F.softmax(tab_pred, dim=1)
             img_probs = F.softmax(img_pred, dim=1)
+            fused_probs = (tab_probs + img_probs) / 2   # <-- fusion happens here
             all_tab_labels.extend(tab_label.cpu().numpy())
             all_tab_preds.extend(tab_probs.cpu().numpy())
             all_img_labels.extend(img_label.cpu().numpy())

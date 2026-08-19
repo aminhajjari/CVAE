@@ -25,6 +25,12 @@ import scipy.io.arff as arff
 from tqdm import tqdm
 from adopt import ADOPT 
 
+# ========== TORCH/ADOPT COMPATIBILITY PATCH ==========
+import torch.optim.optimizer as _torch_optim
+
+if not hasattr(_torch_optim.Optimizer, '_cuda_graph_capture_health_check'):
+    _torch_optim.Optimizer._cuda_graph_capture_health_check = \
+        _torch_optim.Optimizer._accelerator_graph_capture_health_check
 
 # ========== ARGUMENT PARSER ==========
 parser = argparse.ArgumentParser(description="Welcome to Table2Image")

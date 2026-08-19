@@ -17,17 +17,21 @@
 # Paths
 # ============================================================
 
-BASE="/home/gkianfar/scratch/Amin/ICC"
+PROJECT_DIR="/home/gkianfar/scratch/Amin/ICC"
+CODE_DIR="/home/gkianfar/scratch/Amin/AI/CVAE"
 
-CODE="$BASE/main/V2I"
-DATA="$BASE/Unzippeddata/CSV"
 DEBUG_DATA="$BASE/debug_data"
-OUTPUT="$BASE/output/debug"
 
-VENV="$BASE/venvMsc/bin/activate"
+VENV_PATH="$PROJECT_DIR/venvMsc/bin/activate"
 
-MAIN="$CODE/main.py"
-RUN="$CODE/run_all_datasets.py"
+BATCH_SCRIPT="$CODE_DIR/run_all_datasets.py"
+MAIN_SCRIPT="$CODE_DIR/main.py"
+
+RESULTS_BASE="/home/gkianfar/scratch/Amin/AI/outputs/logs"
+
+JOB_LOGS_DIR="/home/gkianfar/scratch/Amin/AI/outputs/logs"
+
+
 
 TIMEOUT=14400
 

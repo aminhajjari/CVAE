@@ -19,8 +19,7 @@
 
 PROJECT_DIR="/home/gkianfar/scratch/Amin/ICC"
 CODE_DIR="/home/gkianfar/scratch/Amin/AI/CVAE"
-
-DEBUG_DATA="$BASE/debug_data"
+DEBUG_DATA="/home/gkianfar/scratch/Amin/AI/debug_data"
 
 VENV_PATH="$PROJECT_DIR/venvMsc/bin/activate"
 

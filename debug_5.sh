@@ -1,15 +1,15 @@
 #!/bin/bash
 
 #SBATCH --account=def-arashmoh
-#SBATCH --job-name=V2I_DEBUG
+#SBATCH --job-name=AIV2I_DEBUG
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=a100:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=04:00:00
 
-#SBATCH --output=/home/gkianfar/scratch/Amin/AI/outputs/logs/debug_%A.out
-#SBATCH --error=/home/gkianfar/scratch/Amin/AI/outputs/logs/debug_%A.err
+#SBATCH --output=/home/gkianfar/scratch/Amin/AI/outputs/logs/AIdebug_%A.out
+#SBATCH --error=/home/gkianfar/scratch/Amin/AI/outputs/logs/AIdebug_%A.err
 
 
 

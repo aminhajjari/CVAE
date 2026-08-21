@@ -260,11 +260,15 @@ if num_classes < 2:
 X_df = df.drop(columns=[target_col])
 print(f"[INFO] Encoding categorical features...")
 for col in X_df.columns:
-    if X_df[col].dtype == 'object':
+    coerced = pd.to_numeric(X_df[col], errors='coerce')
+    if coerced.notna().all():
+        X_df[col] = coerced
+    else:
         le = LabelEncoder()
         X_df[col] = le.fit_transform(X_df[col].astype(str))
-    else:
-        X_df[col] = pd.to_numeric(X_df[col], errors='coerce')
+
+if X_df.shape[1] == 0:
+    raise ValueError("All feature columns were dropped during encoding. Dataset unusable.")
 
 print(f"[INFO] Imputing missing values with median...")
 imputer = SimpleImputer(strategy='median')

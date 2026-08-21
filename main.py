@@ -260,10 +260,13 @@ if num_classes < 2:
 X_df = df.drop(columns=[target_col])
 print(f"[INFO] Encoding categorical features...")
 for col in X_df.columns:
+    original_na = X_df[col].isna()
     coerced = pd.to_numeric(X_df[col], errors='coerce')
-    if coerced.notna().all():
+    if coerced.isna().equals(original_na):
+        # Every non-missing value parsed as a number — genuinely numeric column
         X_df[col] = coerced
     else:
+        # Coercion nulled out values that weren't already missing — truly categorical
         le = LabelEncoder()
         X_df[col] = le.fit_transform(X_df[col].astype(str))
 

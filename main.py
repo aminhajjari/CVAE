@@ -482,17 +482,15 @@ class TabTextFusionModel(nn.Module):
         return tab_pred, fused_pred
 
 print("[INFO] Creating model...")
-cae = CAEWithTabEmbedding(
+model = TabTextFusionModel(
     input_dim=n_cont_features,
     tab_latent_size=tab_latent_size,
+    text_embed_dim=TEXT_EMBED_DIM,
     num_classes=num_classes,
-    latent_size=8,
-    vif_values=vif_values
+    vif_values=vif_values,
+    dropout_p=0.2
 ).to(DEVICE)
-#optimizer = optim.AdamW(cae.parameters(), lr=0.001, weight_decay=1e-4)
-#optimizer = ADOPT(cae.parameters(), lr=0.001, decouple=True, weight_decay=1e-4)
-#optimizer = ADOPT(cae.parameters(), lr=0.001, decouple=True)
-optimizer = optim.AdamW(cae.parameters(), lr=0.001, weight_decay=1e-4)
+optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-4)
 
 print(f"[INFO] Model created with {sum(p.numel() for p in cae.parameters())} parameters")
 # ============================================================

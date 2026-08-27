@@ -1,11 +1,11 @@
 #!/bin/bash
 
 #=======================================================================
-# PRODUCTION SLURM SCRIPT - 80 Datasets with Weight Decay
+# PRODUCTION SLURM SCRIPT - Table2Text + VIF + BGE
 #=======================================================================
 
 #SBATCH --account=def-arashmoh
-#SBATCH --job-name=T2I_VIF_PROD
+#SBATCH --job-name=T2T_VIF_PROD
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=a100:1
 #SBATCH --cpus-per-task=8
@@ -30,32 +30,31 @@ BATCH_SCRIPT="$CODE_DIR/run_all_datasets.py"
 MAIN_SCRIPT="$CODE_DIR/main.py"
 
 RESULTS_BASE="/home/gkianfar/scratch/Amin/AI/outputs/logs"
-
 JOB_LOGS_DIR="/home/gkianfar/scratch/Amin/AI/outputs/logs"
 
-TIMEOUT_DEFAULT=14400  # 4 hours
+TIMEOUT_DEFAULT=14400  # 4 hours per dataset
 
 #=======================================================================
 # Job Information
 #=======================================================================
 
 echo "=========================================="
-echo "TABLE2IMAGE-VIF PRODUCTION RUN"
+echo "TABLE2TEXT-VIF PRODUCTION RUN"
 echo "=========================================="
 echo "Job ID: $SLURM_JOB_ID"
 echo "Started: $(date)"
 echo "Node: $(hostname)"
 echo "Datasets dir: $DATASETS_DIR"
-echo "Code dir: $TAB2IMG_DIR"
+echo "Code dir: $CODE_DIR"
 echo "Output dir: $RESULTS_BASE"
 echo "Configuration:"
+echo "  - BGE: bge-large-en-v1.5"
 echo "  - Weight Decay: 1e-4 (AdamW)"
 echo "  - Timeout: 4 hours per dataset"
 echo "  - CPUs: 8 cores"
 echo "  - Memory: 64GB"
 echo "=========================================="
 echo ""
-
 
 #=======================================================================
 # GPU Information
@@ -64,7 +63,6 @@ echo ""
 echo "GPU Information:"
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
 echo ""
-
 
 #=======================================================================
 # Setup
@@ -77,7 +75,6 @@ mkdir -p "$RESULTS_BASE"
 
 echo "✅ Directories ready"
 echo ""
-
 
 #=======================================================================
 # Verify Files
@@ -109,14 +106,29 @@ if [ ! -f "$VENV_PATH" ]; then
     exit 1
 fi
 
+# Verify BGE model
+BGE_MODEL="/home/gkianfar/scratch/Amin/models/BAAI/bge-large-en-v1.5"
+
+if [ ! -d "$BGE_MODEL" ]; then
+    echo "❌ ERROR: BGE model not found:"
+    echo "   $BGE_MODEL"
+    exit 1
+fi
+
+if [ ! -f "$BGE_MODEL/model.safetensors" ]; then
+    echo "❌ ERROR: BGE model weights not found:"
+    echo "   $BGE_MODEL/model.safetensors"
+    exit 1
+fi
+
 DATASET_COUNT=$(find "$DATASETS_DIR" \
     -mindepth 1 \
     -maxdepth 1 \
     -type d | wc -l)
 
 echo "✅ Found $DATASET_COUNT dataset folders"
+echo "✅ BGE model found"
 echo ""
-
 
 #=======================================================================
 # Load Environment
@@ -132,14 +144,12 @@ module load cuda/12.2
 echo "✅ Modules loaded"
 echo ""
 
-
 echo "Activating virtual environment..."
 
 source "$VENV_PATH"
 
 echo "✅ Virtual environment active"
 echo ""
-
 
 #=======================================================================
 # Python Environment Check
@@ -156,6 +166,7 @@ print(f'PyTorch: {torch.__version__}')
 print(f'CUDA available: {torch.cuda.is_available()}')
 if torch.cuda.is_available():
     print(f'GPU: {torch.cuda.get_device_name(0)}')
+    print(f'CUDA version: {torch.version.cuda}')
 "
 
 if [ $? -ne 0 ]; then
@@ -163,9 +174,29 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-echo "✅ Environment ready"
 echo ""
 
+#=======================================================================
+# Verify BGE / Sentence Transformers
+#=======================================================================
+
+echo "Checking BGE environment..."
+
+python -c "
+from sentence_transformers import SentenceTransformer
+model_path = '$BGE_MODEL'
+model = SentenceTransformer(model_path, device='cpu')
+print('✅ BGE model loaded successfully')
+print(f'Embedding dimension: {model.get_embedding_dimension()}')
+"
+
+if [ $? -ne 0 ]; then
+    echo "❌ ERROR: BGE model check failed!"
+    exit 1
+fi
+
+echo "✅ BGE environment ready"
+echo ""
 
 #=======================================================================
 # Verify Weight Decay in Code
@@ -174,18 +205,12 @@ echo ""
 echo "Verifying weight decay configuration..."
 
 if grep -q "weight_decay=1e-4" "$MAIN_SCRIPT"; then
-
-    echo "✅ Weight decay (1e-4) confirmed in run_vif.py"
-
+    echo "✅ Weight decay (1e-4) confirmed in main.py"
 else
-
-    echo "⚠️ WARNING: weight_decay not found in run_vif.py"
-    echo "   Make sure it's configured correctly!"
-
+    echo "⚠️ WARNING: weight_decay not found in main.py"
 fi
 
 echo ""
-
 
 #=======================================================================
 # Execute Batch Processing
@@ -196,7 +221,7 @@ echo "🚀 STARTING BATCH PROCESSING"
 echo "=========================================="
 
 echo "Using:"
-echo "  Code:     $TAB2IMG_DIR"
+echo "  Code:     $CODE_DIR"
 echo "  Datasets: $DATASETS_DIR"
 echo "  Output:   $RESULTS_BASE"
 echo "  Datasets: $DATASET_COUNT"
@@ -214,10 +239,9 @@ echo ""
 echo "=========================================="
 echo ""
 
-
 # Run the batch processor
 
-cd "$TAB2IMG_DIR"
+cd "$CODE_DIR" || exit 1
 
 python "$BATCH_SCRIPT" \
     --datasets_dir "$DATASETS_DIR" \
@@ -227,7 +251,6 @@ python "$BATCH_SCRIPT" \
     --timeout "$TIMEOUT_DEFAULT"
 
 EXIT_CODE=$?
-
 
 #=======================================================================
 # Final Summary
@@ -241,7 +264,6 @@ echo "=========================================="
 echo "Finished: $(date)"
 echo "Exit code: $EXIT_CODE"
 echo ""
-
 
 if [ $EXIT_CODE -eq 0 ]; then
 
@@ -291,11 +313,10 @@ if [ $EXIT_CODE -eq 0 ]; then
 else
 
     echo "⚠️ Some datasets may have failed"
-
     echo ""
     echo "Check SLURM logs:"
-    echo "    Output: $JOB_LOGS_DIR/production_${SLURM_JOB_ID}.out"
-    echo "    Error:  $JOB_LOGS_DIR/production_${SLURM_JOB_ID}.err"
+    echo "    Output: $JOB_LOGS_DIR/ALL_${SLURM_JOB_ID}.out"
+    echo "    Error:  $JOB_LOGS_DIR/ALL_${SLURM_JOB_ID}.err"
 
 fi
 

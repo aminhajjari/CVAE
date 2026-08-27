@@ -23,14 +23,7 @@ from statsmodels.stats.outliers_influence import variance_inflation_factor
 import warnings
 import scipy.io.arff as arff
 from tqdm import tqdm
-from adopt import ADOPT 
-
-# ========== TORCH/ADOPT COMPATIBILITY PATCH ==========
-import torch.optim.optimizer as _torch_optim
-
-if not hasattr(_torch_optim.Optimizer, '_cuda_graph_capture_health_check'):
-    _torch_optim.Optimizer._cuda_graph_capture_health_check = \
-        _torch_optim.Optimizer._accelerator_graph_capture_health_check
+#from adopt import ADOPT 
 
 # ========== ARGUMENT PARSER ==========
 parser = argparse.ArgumentParser(description="Welcome to Table2Image")
@@ -52,9 +45,7 @@ data_path = args.data
 file_name = os.path.basename(os.path.dirname(data_path))
 
 DATASET_ROOT = "/home/gkianfar/scratch/Amin/ICC/Unzippeddata/Image"
- 
-
-
+#CLIP_MODEL_PATH = "/home/gkianfar/scratch/Amin/ICC/models/ViT-B-32.pt"
 
 
 USE_CUDA = torch.cuda.is_available()
@@ -260,18 +251,14 @@ if num_classes < 2:
 X_df = df.drop(columns=[target_col])
 print(f"[INFO] Encoding categorical features...")
 for col in X_df.columns:
-    original_na = X_df[col].isna()
-    coerced = pd.to_numeric(X_df[col], errors='coerce')
-    if coerced.isna().equals(original_na):
-        # Every non-missing value parsed as a number — genuinely numeric column
-        X_df[col] = coerced
-    else:
-        # Coercion nulled out values that weren't already missing — truly categorical
+    if not pd.api.types.is_numeric_dtype(X_df[col]):
         le = LabelEncoder()
         X_df[col] = le.fit_transform(X_df[col].astype(str))
+    else:
+        X_df[col] = pd.to_numeric(X_df[col], errors='coerce')
 
 if X_df.shape[1] == 0:
-    raise ValueError("All feature columns were dropped during encoding. Dataset unusable.")
+    raise ValueError(f"All features dropped for {file_name} — check dtype handling.")
 
 print(f"[INFO] Imputing missing values with median...")
 imputer = SimpleImputer(strategy='median')
@@ -362,6 +349,9 @@ print(f"[INFO] VIF calculated. Mean: {vif_values.mean():.2f}, Max: {vif_values.m
 print("[INFO] Preparing synchronized image-tabular datasets...")
 train_tabular_label_counts = torch.bincount(train_tabular_dataset.tensors[1], minlength=num_classes)
 test_tabular_label_counts = torch.bincount(test_tabular_dataset.tensors[1], minlength=num_classes)
+class_weights = train_tabular_label_counts.sum() / (train_tabular_label_counts.float() + 1e-6)
+class_weights = (class_weights / class_weights.sum() * num_classes).to(DEVICE)
+print(f"[INFO] Class weights: {class_weights.tolist()}")
 num_samples_needed = train_tabular_label_counts.tolist()
 num_samples_needed_test = test_tabular_label_counts.tolist()
 valid_labels = set(range(num_classes))
@@ -426,42 +416,41 @@ train_synchronized_loader = DataLoader(train_synchronized_dataset, batch_size=BA
 test_synchronized_loader = DataLoader(test_synchronized_dataset, batch_size=BATCH_SIZE)
 print(f"[INFO] Synchronized datasets created. Train batches: {len(train_synchronized_loader)}")
 
-#_______________________uncertainty-weighting module__________________
-
-class UncertaintyWeighting(nn.Module):
-    """Learnable homoscedastic uncertainty weighting (Kendall et al., 2018).
-    Learns how much to trust each loss term instead of summing them raw."""
-    def __init__(self, num_tasks=3):
-        super().__init__()
-        self.log_vars = nn.Parameter(torch.zeros(num_tasks))
-
-    def forward(self, losses):
-        total = 0.0
-        for i, loss in enumerate(losses):
-            precision = torch.exp(-self.log_vars[i])
-            total = total + precision * loss + self.log_vars[i]
-        return total
-
 # ========== MODEL DEFINITIONS ==========
-class SimpleCNN(nn.Module):
+class ImageClassifierHead(nn.Module):
+    """
+    Trainable CNN classifier over the reconstructed 28x28 image.
+    Replaces the frozen CLIP zero-shot classifier, which scored against a
+    fixed clothing/digit vocabulary unrelated to the dataset's real classes.
+    """
     def __init__(self, num_classes):
-        super(SimpleCNN, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.fc1 = nn.Linear(64 * 7 * 7, 128)
-        self.fc2 = nn.Linear(128, num_classes)
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(0.5)
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(1, 32, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
+            nn.Flatten(),
+            nn.Linear(64 * 7 * 7, 128), nn.ReLU(),
+            nn.Linear(128, num_classes)
+        )
+
     def forward(self, x):
-        x = self.relu(self.conv1(x))
-        x = self.pool(x)
-        x = self.relu(self.conv2(x))
-        x = self.pool(x)
-        x = x.view(x.size(0), -1)
-        x = self.dropout(self.relu(self.fc1(x)))
-        x = self.fc2(x)
-        return x
+        return self.net(x)
+
+
+def supcon_loss(z, labels, temperature=0.1):
+    """Supervised contrastive loss on the CVAE latent z."""
+    z = F.normalize(z, dim=1)
+    sim = torch.matmul(z, z.T) / temperature
+    labels = labels.view(-1, 1)
+    mask = torch.eq(labels, labels.T).float().to(z.device)
+    logits_mask = torch.ones_like(mask) - torch.eye(mask.shape[0], device=z.device)
+    mask = mask * logits_mask
+    exp_sim = torch.exp(sim) * logits_mask
+    log_prob = sim - torch.log(exp_sim.sum(1, keepdim=True) + 1e-8)
+    mean_log_prob_pos = (mask * log_prob).sum(1) / (mask.sum(1) + 1e-8)
+    return -mean_log_prob_pos.mean()
+
+
 
 class SimpleMLP(nn.Module):
     def __init__(self, input_dim, latent_dim, num_classes):
@@ -512,7 +501,13 @@ class CAEWithTabEmbedding(nn.Module):
             nn.Linear(128, 28*28),
             nn.Sigmoid()
         )
-        self.final_classifier = SimpleCNN(num_classes=num_classes)
+        self.final_classifier = ImageClassifierHead(num_classes=num_classes)
+        self.gate = nn.Sequential(
+            nn.Linear(tab_latent_size + num_classes, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1),
+            nn.Sigmoid()
+        )
     def encode(self, x, tab_embedding, vif_embedding):
         return self.encoder(torch.cat([x, tab_embedding, vif_embedding], dim=1))
     def decode(self, z, tab_embedding, vif_embedding):
@@ -526,7 +521,9 @@ class CAEWithTabEmbedding(nn.Module):
         z = self.encode(x, tab_embedding, vif_embedding)
         recon_x = self.decode(z, tab_embedding, vif_embedding)
         img_pred = self.final_classifier(recon_x.view(-1, 1, 28, 28))
-        return recon_x, tab_pred, img_pred
+        alpha = self.gate(torch.cat([tab_embedding, img_pred], dim=1))
+        fused_pred = alpha * img_pred + (1 - alpha) * tab_pred
+        return recon_x, tab_pred, img_pred, fused_pred, z
 
 print("[INFO] Creating model...")
 cae = CAEWithTabEmbedding(
@@ -539,8 +536,7 @@ cae = CAEWithTabEmbedding(
 #optimizer = optim.AdamW(cae.parameters(), lr=0.001, weight_decay=1e-4)
 #optimizer = ADOPT(cae.parameters(), lr=0.001, decouple=True, weight_decay=1e-4)
 #optimizer = ADOPT(cae.parameters(), lr=0.001, decouple=True)
-weighting = UncertaintyWeighting(num_tasks=3).to(DEVICE)
-optimizer = ADOPT(list(cae.parameters()) + list(weighting.parameters()), lr=0.001, decouple=True)
+optimizer = optim.AdamW(cae.parameters(), lr=0.001, weight_decay=1e-4)
 
 print(f"[INFO] Model created with {sum(p.numel() for p in cae.parameters())} parameters")
 # ============================================================
@@ -556,13 +552,15 @@ print(f"       Configuration: C={num_classes} classes, N={n_cont_features} featu
 if num_classes == 2 and n_cont_features == 78:
     print(f"       ✓ Matches Table 2 specs (Expected: ~627.6K)")
 #############################################
-def loss_function(recon_x, x, tab_pred, tab_labels, img_pred, img_labels):
+def loss_function(recon_x, x, tab_pred, tab_labels, img_pred, img_labels, fused_pred, z, con_weight=0.5):
     BCE = F.mse_loss(recon_x, x)
-    tab_loss = F.cross_entropy(tab_pred, tab_labels)
-    img_loss = F.cross_entropy(img_pred, img_labels)
-    return BCE, tab_loss, img_loss  # return separately, weighting happens outside
+    tab_loss = F.cross_entropy(tab_pred, tab_labels, weight=class_weights)
+    img_loss = F.cross_entropy(img_pred, img_labels, weight=class_weights)
+    fused_loss = F.cross_entropy(fused_pred, tab_labels, weight=class_weights)
+    con_loss = supcon_loss(z, tab_labels)
+    return BCE + tab_loss + img_loss + fused_loss + con_weight * con_loss
 
-def train(model, train_data_loader, optimizer, epoch, weighting):
+def train(model, train_data_loader, optimizer, epoch):
     model.train()
     train_loss = 0
     for tab_data, tab_label, img_data, img_label in train_data_loader:
@@ -573,25 +571,24 @@ def train(model, train_data_loader, optimizer, epoch, weighting):
         optimizer.zero_grad()
         random_array = np.random.rand(img_data.shape[0], 28*28)
         x_rand = torch.Tensor(random_array).to(DEVICE)
-        recon_x, tab_pred, img_pred = model(x_rand, tab_data)
-        bce, tab_loss, img_loss = loss_function(recon_x, img_data, tab_pred, tab_label, img_pred, img_label)
-        loss = weighting([bce, tab_loss, img_loss])
+        recon_x, tab_pred, img_pred, fused_pred, z = model(x_rand, tab_data)
+        loss = loss_function(recon_x, img_data, tab_pred, tab_label, img_pred, img_label, fused_pred, z)
         loss.backward()
         train_loss += loss.item()
         optimizer.step()
     return train_loss / len(train_data_loader)
 
-def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch, weighting):
+def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
     model.eval()
     test_loss = 0
     correct_tab_total = 0
     correct_img_total = 0
+    correct_fused_total = 0
     total = 0
     all_tab_labels, all_tab_preds = [], []
     all_img_labels, all_img_preds = [], []
-    all_fused_preds = []          
-    correct_fused_total = 0
-  
+    all_fused_preds = []
+
     with torch.no_grad():
         for tab_data, tab_label, img_data, img_label in test_data_loader:
             img_data = img_data.view(-1, 28*28).to(DEVICE)
@@ -600,12 +597,11 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch, we
             tab_label = tab_label.to(DEVICE).long()
             random_array = np.random.rand(img_data.shape[0], 28*28)
             x_rand = torch.Tensor(random_array).view(-1, 28*28).to(DEVICE)
-            recon_x, tab_pred, img_pred = model(x_rand, tab_data)
-            bce, tab_loss, img_loss = loss_function(recon_x, img_data, tab_pred, tab_label, img_pred, img_label)
-            test_loss += weighting([bce, tab_loss, img_loss]).item()
+            recon_x, tab_pred, img_pred, fused_pred, z = model(x_rand, tab_data)
+            test_loss += loss_function(recon_x, img_data, tab_pred, tab_label, img_pred, img_label, fused_pred, z).item()
             tab_probs = F.softmax(tab_pred, dim=1)
             img_probs = F.softmax(img_pred, dim=1)
-            fused_probs = (tab_probs + img_probs) / 2   # <-- fusion happens here
+            fused_probs = F.softmax(fused_pred, dim=1)
             all_tab_labels.extend(tab_label.cpu().numpy())
             all_tab_preds.extend(tab_probs.cpu().numpy())
             all_img_labels.extend(img_label.cpu().numpy())
@@ -613,7 +609,7 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch, we
             all_fused_preds.extend(fused_probs.cpu().numpy())
             tab_predicted = torch.argmax(tab_pred, dim=1)
             img_predicted = torch.argmax(img_pred, dim=1)
-            fused_predicted = torch.argmax(fused_probs, dim=1)
+            fused_predicted = torch.argmax(fused_pred, dim=1)
             correct_tab_total += (tab_predicted == tab_label).sum().item()
             correct_img_total += (img_predicted == img_label).sum().item()
             correct_fused_total += (fused_predicted == tab_label).sum().item()
@@ -622,23 +618,21 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch, we
     test_loss /= len(test_data_loader)
     tab_accuracy_total = 100 * correct_tab_total / total
     img_accuracy_total = 100 * correct_img_total / total
-    fused_accuracy_total = 100 * correct_fused_total / total   # <-- add
+    fused_accuracy_total = 100 * correct_fused_total / total
     
     all_tab_preds_arr = np.array(all_tab_preds)
-    all_img_preds_arr = np.array(all_img_preds)
-    all_fused_preds_arr = np.array(all_fused_preds) 
+    all_fused_preds_arr = np.array(all_fused_preds)
     all_tab_labels_arr = np.array(all_tab_labels)
-    all_img_labels_arr = np.array(all_img_labels)
 
-    tab_auc, img_auc, fused_auc = 0.0, 0.0, 0.0 
-    if not (np.isnan(all_img_preds_arr).any() or np.isinf(all_img_preds_arr).any()):
+    tab_auc, fused_auc = 0.0, 0.0
+    if not (np.isnan(all_tab_preds_arr).any() or np.isinf(all_tab_preds_arr).any()):
         try:
             if num_classes == 2:
-                img_auc = roc_auc_score(all_img_labels_arr, all_img_preds_arr[:, 1])
+                tab_auc = roc_auc_score(all_tab_labels_arr, all_tab_preds_arr[:, 1])
             else:
-                img_auc = roc_auc_score(all_img_labels_arr, all_img_preds_arr, multi_class="ovr", average="macro")
+                tab_auc = roc_auc_score(all_tab_labels_arr, all_tab_preds_arr, multi_class="ovr", average="macro")
         except Exception as e:
-            print(f"[WARNING] Img AUC calculation failed: {e}")
+            print(f"[WARNING] Tab AUC calculation failed: {e}")
 
     if not (np.isnan(all_fused_preds_arr).any() or np.isinf(all_fused_preds_arr).any()):
         try:
@@ -651,12 +645,11 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch, we
 
     if fused_accuracy_total > best_accuracy:
         best_accuracy = fused_accuracy_total
-        best_epoch = epoch
-        print(f"[INFO] New best FUSED accuracy: {best_accuracy:.2f}% at epoch {epoch}")
-    if fused_auc > best_auc:
         best_auc = fused_auc
+        best_epoch = epoch
+        print(f"[INFO] New best accuracy: {best_accuracy:.2f}% (AUC: {fused_auc:.4f}) at epoch {epoch}")
 
-    return best_accuracy, best_auc, best_epoch, test_loss, tab_accuracy_total, img_accuracy_total, fused_accuracy_total
+    return best_accuracy, best_auc, best_epoch, test_loss, tab_accuracy_total, fused_accuracy_total
 
 # ========== IMAGE SAVING FUNCTION ==========
 
@@ -666,7 +659,7 @@ def save_sample_images(model, test_data_loader, dataset_name, num_classes, num_i
     Ensures all classes are represented in saved samples
     """
     model.eval()
-    images_base_dir = "/home/gkianfar/scratch/Amin/AI/outputs/imageout"
+    images_base_dir = "/home/gkianfar/scratch/Amin/ICC/output/imageout"
     images_dir = os.path.join(images_base_dir, dataset_name)
     os.makedirs(images_dir, exist_ok=True)
     
@@ -693,7 +686,7 @@ def save_sample_images(model, test_data_loader, dataset_name, num_classes, num_i
             # Generate reconstructed images
             random_array = np.random.rand(img_data_flat.shape[0], 28*28)
             x_rand = torch.Tensor(random_array).to(DEVICE)
-            recon_x, _, _ = model(x_rand, tab_data)
+            recon_x, _, _, _, _ = model(x_rand, tab_data)
             
             # Store samples by class
             for i in range(len(tab_label)):
@@ -868,6 +861,10 @@ def save_sample_images(model, test_data_loader, dataset_name, num_classes, num_i
     return num_saved, images_dir
 
 # ========== TRAINING LOOP (NO MODEL SAVING) ==========
+n_train_samples = len(train_tabular_dataset)
+EPOCH = int(np.clip(50 * (500 / max(n_train_samples, 50)) ** 0.5, 20, 150))
+print(f"[INFO] Scaled epochs to {EPOCH} for {n_train_samples} training samples")
+
 print("\n" + "="*70)
 print("STARTING TRAINING")
 print("="*70)
@@ -877,17 +874,15 @@ best_auc = 0
 best_epoch = 0
 
 for epoch in range(1, EPOCH + 1):
-    train_loss = train(cae, train_synchronized_loader, optimizer, epoch, weighting)
-    best_accuracy, best_auc, best_epoch, test_loss, tab_acc, img_acc, fused_acc = test(
-        cae, test_synchronized_loader, epoch, best_accuracy, best_auc, best_epoch, weighting
+    train_loss = train(cae, train_synchronized_loader, optimizer, epoch)
+    best_accuracy, best_auc, best_epoch, test_loss, tab_acc, img_acc = test(
+        cae, test_synchronized_loader, epoch, best_accuracy, best_auc, best_epoch
     )
-
+    
     if epoch % 10 == 0 or epoch == 1:
         print(f"[Epoch {epoch:3d}] Train Loss: {train_loss:.4f} | "
               f"Test Loss: {test_loss:.4f} | "
-              f"Tab Acc: {tab_acc:.2f}% | Img Acc: {img_acc:.2f}% | Fused Acc: {fused_acc:.2f}%")
-    
-
+              f"Tab Acc: {tab_acc:.2f}% | Img Acc: {img_acc:.2f}%")
 
 print("\n" + "="*70)
 print("TRAINING COMPLETE")
@@ -902,7 +897,7 @@ print("YOUR MODEL BENCHMARK RESULTS")
 print("="*60)
 
 # Load/save your results history
-RESULTS_FILE = "/home/gkianfar/scratch/Amin/AI/outputs/logs/my_model_wins.json"
+RESULTS_FILE = "/home/gkianfar/scratch/Amin/ICC/output/my_model_wins.json"
 if os.path.exists(RESULTS_FILE):
     with open(RESULTS_FILE, 'r') as f:
         history = json.load(f)

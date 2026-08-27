@@ -300,23 +300,7 @@ print(f"  - Class distribution: {dict(zip(*np.unique(y, return_counts=True)))}")
 print(f"  - Tab latent size: {tab_latent_size}")
 print(f"{'='*70}\n")
 
-print("[INFO] Loading FashionMNIST and MNIST datasets...")
-fashionmnist_dataset = datasets.FashionMNIST(
-    root=DATASET_ROOT, train=True, download=False, transform=transforms.ToTensor()
-)
-mnist_dataset = datasets.MNIST(
-    root=DATASET_ROOT, train=True, download=False, transform=transforms.ToTensor()
-)
 
-class ModifiedLabelDataset(Dataset):
-    def __init__(self, dataset, label_offset=10):
-        self.dataset = dataset
-        self.label_offset = label_offset
-    def __len__(self):
-        return len(self.dataset)
-    def __getitem__(self, idx):
-        image, label = self.dataset[idx]
-        return image, label + self.label_offset
 
 modified_mnist_dataset = ModifiedLabelDataset(mnist_dataset, label_offset=10)
 

@@ -5,15 +5,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import roc_auc_score
-import matplotlib.pyplot as plt
 import torch
 from torch import nn, optim
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader, Subset, ConcatDataset, TensorDataset, random_split
-from torch.utils.data.sampler import Sampler
-import torchvision
-from torchvision import datasets, transforms
-import itertools
+from torch.utils.data import DataLoader, TensorDataset
 import argparse
 import os
 import json

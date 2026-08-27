@@ -1,4 +1,3 @@
-import random
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -17,41 +16,32 @@ from datetime import datetime
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 import warnings
 import scipy.io.arff as arff
-from tqdm import tqdm
-#from adopt import ADOPT 
 
 # ========== ARGUMENT PARSER ==========
-parser = argparse.ArgumentParser(description="Welcome to Table2Image")
+parser = argparse.ArgumentParser(description="Welcome to Table2Text")
 parser.add_argument('--data', type=str, required=True, 
                    help='Path to the dataset (csv/arff/data)')
 parser.add_argument('--save_dir', type=str, required=False, default=None,
                    help='Directory to save results (optional, for compatibility)')
-parser.add_argument('--num_images', type=int, default=20,
-                   help='Number of sample images to save (default: 20)')
 
 args = parser.parse_args()
 
 # ========== PARAMETERS ==========
-EPOCH = 50
 BATCH_SIZE = 64
-NUM_IMAGES_TO_SAVE = min(args.num_images, 20)  # Cap at 20
 
 data_path = args.data
 file_name = os.path.basename(os.path.dirname(data_path))
 
-DATASET_ROOT = "/home/gkianfar/scratch/Amin/ICC/Unzippeddata/Image"
-#CLIP_MODEL_PATH = "/home/gkianfar/scratch/Amin/ICC/models/ViT-B-32.pt"
-
+TEXT_EMBED_MODEL_PATH = "/home/gkianfar/scratch/Amin/models/BAAI/bge-large-en-v1.5"
 
 USE_CUDA = torch.cuda.is_available()
 DEVICE = torch.device('cuda' if USE_CUDA else 'cpu')
 
 print(f"\n{'='*70}")
-print(f"TABLE2IMAGE - Starting Experiment")
+print(f"TABLE2TEXT - Starting Experiment")
 print(f"{'='*70}")
 print(f"Dataset: {file_name}")
 print(f"Device: {DEVICE}")
-print(f"Images to save: {NUM_IMAGES_TO_SAVE}")
 print(f"{'='*70}\n")
 
 # ========== DATA LOADING FUNCTION ==========
@@ -200,7 +190,7 @@ if target_col in df.columns:
         df = df[df[target_col].isin(valid_classes)]
         filtered_size = len(df)
         pct_removed = ((original_size - filtered_size) / original_size) * 100
-        print(f"   ⚠️  WARNING: Removed {original_size - filtered_size} samples ({pct_removed:.1f}% of original data)")
+        print(f"   \u26a0\ufe0f  WARNING: Removed {original_size - filtered_size} samples ({pct_removed:.1f}% of original data)")
         print(f"[INFO] New dataset shape: {df.shape}")
         
         # Show new distribution
@@ -256,7 +246,6 @@ os.environ["HF_HUB_OFFLINE"] = "1"
 os.environ["TRANSFORMERS_OFFLINE"] = "1"
 from sentence_transformers import SentenceTransformer
 
-TEXT_EMBED_MODEL_PATH = "/home/gkianfar/scratch/Amin/models/BAAI/bge-large-en-v1.5"
 text_embed_model = SentenceTransformer(TEXT_EMBED_MODEL_PATH, device=str(DEVICE))
 TEXT_EMBED_DIM = text_embed_model.get_embedding_dimension()
 
@@ -274,7 +263,7 @@ for col in X_df.columns:
         X_df[col] = pd.to_numeric(X_df[col], errors='coerce')
 
 if X_df.shape[1] == 0:
-    raise ValueError(f"All features dropped for {file_name} — check dtype handling.")
+    raise ValueError(f"All features dropped for {file_name} \u2014 check dtype handling.")
 
 print(f"[INFO] Imputing missing values with median...")
 imputer = SimpleImputer(strategy='median')
@@ -437,13 +426,7 @@ optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-4)
 
 num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"[INFO] Model created with {num_params:,} trainable parameters")
-
-print(f"[INFO] Model created with {num_params:,} trainable parameters")
 print(f"       Configuration: C={num_classes} classes, N={n_cont_features} features")
-
-# Note if this matches Table 2's reference configuration
-if num_classes == 2 and n_cont_features == 78:
-    print(f"       ✓ Matches Table 2 specs (Expected: ~627.6K)")
 #############################################
 def loss_function(tab_pred, fused_pred, labels, tab_weight=0.3):
     tab_loss = F.cross_entropy(tab_pred, labels, weight=class_weights)
@@ -518,233 +501,19 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
         except Exception as e:
             print(f"[WARNING] Fused AUC calculation failed: {e}")
 
-    if not (np.isnan(all_fused_preds_arr).any() or np.isinf(all_fused_preds_arr).any()):
-        try:
-            if num_classes == 2:
-                fused_auc = roc_auc_score(all_tab_labels_arr, all_fused_preds_arr[:, 1])
-            else:
-                fused_auc = roc_auc_score(all_tab_labels_arr, all_fused_preds_arr, multi_class="ovr", average="macro")
-        except Exception as e:
-            print(f"[WARNING] Fused AUC calculation failed: {e}")
-
     if fused_accuracy_total > best_accuracy:
         best_accuracy = fused_accuracy_total
         best_auc = fused_auc
         best_epoch = epoch
         print(f"[INFO] New best accuracy: {best_accuracy:.2f}% (AUC: {fused_auc:.4f}) at epoch {epoch}")
 
-    return best_accuracy, best_auc, best_epoch, test_loss, tab_accuracy_total, fused_accuracy_total
-
-# ========== IMAGE SAVING FUNCTION ==========
-
-def save_sample_images(model, test_data_loader, dataset_name, num_classes, num_images=20):
-    """
-    Save reconstructed images with DIVERSE labels
-    Ensures all classes are represented in saved samples
-    """
-    model.eval()
-    images_base_dir = "/home/gkianfar/scratch/Amin/ICC/output/imageout"
-    images_dir = os.path.join(images_base_dir, dataset_name)
-    os.makedirs(images_dir, exist_ok=True)
-    
-    # Calculate samples per class (ensure diversity)
-    samples_per_class = max(1, num_images // num_classes)
-    total_to_save = samples_per_class * num_classes
-    
-    print(f"\n[INFO] Generating {total_to_save} sample images...")
-    print(f"[INFO] Strategy: {samples_per_class} samples × {num_classes} classes")
-    
-    # Storage for images by class
-    class_samples = {label: [] for label in range(num_classes)}
-    
-    # Collect samples for each class
-    with torch.no_grad():
-        for tab_data, tab_label, img_data, img_label in test_data_loader:
-            # Check if we have enough samples for all classes
-            if all(len(samples) >= samples_per_class for samples in class_samples.values()):
-                break
-                
-            img_data_flat = img_data.view(-1, 28*28).to(DEVICE)
-            tab_data = tab_data.to(DEVICE)
-            
-            # Generate reconstructed images
-            random_array = np.random.rand(img_data_flat.shape[0], 28*28)
-            x_rand = torch.Tensor(random_array).to(DEVICE)
-            recon_x, _, _, _, _ = model(x_rand, tab_data)
-            
-            # Store samples by class
-            for i in range(len(tab_label)):
-                label = tab_label[i].item()
-                
-                # Only collect if we need more samples for this class
-                if len(class_samples[label]) < samples_per_class:
-                    class_samples[label].append({
-                        'original': img_data[i].cpu().numpy(),
-                        'reconstructed': recon_x[i].cpu().numpy().reshape(28, 28),
-                        'label': label
-                    })
-    
-    # Flatten samples for saving
-    all_samples = []
-    for label in sorted(class_samples.keys()):
-        all_samples.extend(class_samples[label])
-    
-    num_saved = len(all_samples)
-    print(f"[INFO] Collected {num_saved} samples across {num_classes} classes")
-    
-    # Print distribution
-    print(f"[INFO] Samples per class:")
-    for label in range(num_classes):
-        count = len(class_samples[label])
-        print(f"  Class {label}: {count} samples")
-    
-    # ============ CREATE GRID VISUALIZATION ============
-    num_cols = min(5, num_classes)  # Show up to 5 classes per row
-    num_rows = 2 * num_classes  # 2 rows per class (original + reconstructed)
-    
-    fig, axes = plt.subplots(num_rows, num_cols, 
-                             figsize=(3*num_cols, 2*num_rows))
-    
-    # Handle edge cases for axes dimensions
-    if num_rows == 1:
-        axes = axes.reshape(1, -1)
-    elif num_cols == 1:
-        axes = axes.reshape(-1, 1)
-    
-    # Plot images organized by class
-    for class_idx in range(num_classes):
-        samples = class_samples[class_idx][:num_cols]  # Take up to num_cols samples
-        
-        for sample_idx, sample in enumerate(samples):
-            orig_row = class_idx * 2
-            recon_row = class_idx * 2 + 1
-            
-            # Original image
-            axes[orig_row, sample_idx].imshow(sample['original'].squeeze(), cmap='gray')
-            axes[orig_row, sample_idx].set_title(
-                f'Original\nClass {sample["label"]}', 
-                fontsize=8, fontweight='bold'
-            )
-            axes[orig_row, sample_idx].axis('off')
-            
-            # Reconstructed image
-            axes[recon_row, sample_idx].imshow(sample['reconstructed'], cmap='gray')
-            axes[recon_row, sample_idx].set_title(
-                f'Generated\nClass {sample["label"]}', 
-                fontsize=8
-            )
-            axes[recon_row, sample_idx].axis('off')
-        
-        # Hide unused subplots in this class row
-        for empty_col in range(len(samples), num_cols):
-            axes[orig_row, empty_col].axis('off')
-            axes[recon_row, empty_col].axis('off')
-    
-    plt.suptitle(f'{dataset_name} - Image Generation by Class', 
-                 fontsize=14, fontweight='bold', y=0.995)
-    plt.tight_layout()
-    
-    grid_path = os.path.join(images_dir, 'comparison_grid_by_class.png')
-    plt.savefig(grid_path, dpi=150, bbox_inches='tight')
-    plt.close()
-    print(f"[INFO] Saved class-organized grid to: {grid_path}")
-    
-    # ============ ALSO CREATE RANDOM MIXED GRID ============
-    # Show diversity in a single view
-    random_samples = np.random.choice(len(all_samples), 
-                                     size=min(20, len(all_samples)), 
-                                     replace=False)
-    
-    num_random = len(random_samples)
-    num_cols_random = min(5, num_random)
-    num_rows_random = 2 * ((num_random + num_cols_random - 1) // num_cols_random)
-    
-    fig2, axes2 = plt.subplots(num_rows_random, num_cols_random, 
-                               figsize=(3*num_cols_random, 3*num_rows_random))
-    
-    if num_rows_random == 1:
-        axes2 = axes2.reshape(1, -1)
-    elif num_cols_random == 1:
-        axes2 = axes2.reshape(-1, 1)
-    
-    axes2_flat = axes2.flatten()
-    
-    for idx, sample_idx in enumerate(random_samples):
-        sample = all_samples[sample_idx]
-        orig_idx = idx * 2
-        recon_idx = idx * 2 + 1
-        
-        # Original
-        if orig_idx < len(axes2_flat):
-            axes2_flat[orig_idx].imshow(sample['original'].squeeze(), cmap='gray')
-            axes2_flat[orig_idx].set_title(
-                f'Original (Class {sample["label"]})', 
-                fontsize=8
-            )
-            axes2_flat[orig_idx].axis('off')
-        
-        # Reconstructed
-        if recon_idx < len(axes2_flat):
-            axes2_flat[recon_idx].imshow(sample['reconstructed'], cmap='gray')
-            axes2_flat[recon_idx].set_title(
-                f'Generated (Class {sample["label"]})', 
-                fontsize=8
-            )
-            axes2_flat[recon_idx].axis('off')
-    
-    # Hide unused subplots
-    for idx in range(len(random_samples) * 2, len(axes2_flat)):
-        axes2_flat[idx].axis('off')
-    
-    plt.tight_layout()
-    mixed_grid_path = os.path.join(images_dir, 'comparison_grid_mixed.png')
-    plt.savefig(mixed_grid_path, dpi=150, bbox_inches='tight')
-    plt.close()
-    print(f"[INFO] Saved mixed grid to: {mixed_grid_path}")
-    
-    # ============ SAVE INDIVIDUAL IMAGES ============
-    for idx, sample in enumerate(all_samples):
-        label = sample['label']
-        
-        # Original
-        orig_path = os.path.join(images_dir, 
-                                f'sample_{idx:02d}_class{label}_original.png')
-        plt.imsave(orig_path, sample['original'].squeeze(), cmap='gray')
-        
-        # Reconstructed
-        recon_path = os.path.join(images_dir, 
-                                 f'sample_{idx:02d}_class{label}_generated.png')
-        plt.imsave(recon_path, sample['reconstructed'], cmap='gray')
-    
-    print(f"[INFO] Saved {num_saved} individual image pairs")
-    
-    # ============ CREATE CLASS DISTRIBUTION REPORT ============
-    report_path = os.path.join(images_dir, 'sample_distribution.txt')
-    with open(report_path, 'w') as f:
-        f.write(f"Image Sample Distribution Report\n")
-        f.write(f"="*50 + "\n\n")
-        f.write(f"Dataset: {dataset_name}\n")
-        f.write(f"Total samples saved: {num_saved}\n")
-        f.write(f"Number of classes: {num_classes}\n")
-        f.write(f"Target samples per class: {samples_per_class}\n\n")
-        f.write(f"Actual distribution:\n")
-        f.write(f"-"*50 + "\n")
-        for label in range(num_classes):
-            count = len(class_samples[label])
-            percentage = (count / num_saved * 100) if num_saved > 0 else 0
-            f.write(f"  Class {label:2d}: {count:3d} samples ({percentage:5.1f}%)\n")
-        f.write(f"\nGenerated files:\n")
-        f.write(f"-"*50 + "\n")
-        f.write(f"  1. comparison_grid_by_class.png - Organized by class\n")
-        f.write(f"  2. comparison_grid_mixed.png    - Random mixed view\n")
-        f.write(f"  3. sample_*.png                 - Individual images\n")
-    
-    print(f"[INFO] Saved distribution report to: {report_path}")
-    print(f"[INFO] All images saved to: {images_dir}")
-    
-    return num_saved, images_dir
+    return best_accuracy, best_auc, best_epoch, test_loss, tab_accuracy_total, fused_accuracy_total, tab_auc
 
 # ========== TRAINING LOOP (NO MODEL SAVING) ==========
+n_train_samples = len(train_tabular_dataset)
+EPOCH = int(np.clip(50 * (500 / max(n_train_samples, 50)) ** 0.5, 20, 150))
+print(f"[INFO] Scaled epochs to {EPOCH} for {n_train_samples} training samples")
+
 print("\n" + "="*70)
 print("STARTING TRAINING")
 print("="*70)
@@ -755,14 +524,15 @@ best_epoch = 0
 
 for epoch in range(1, EPOCH + 1):
     train_loss = train(model, train_loader, optimizer, epoch)
-    best_accuracy, best_auc, best_epoch, test_loss, tab_acc, fused_acc = test(
+    best_accuracy, best_auc, best_epoch, test_loss, tab_acc, fused_acc, tab_auc_epoch = test(
         model, test_loader, epoch, best_accuracy, best_auc, best_epoch
     )
     
     if epoch % 10 == 0 or epoch == 1:
         print(f"[Epoch {epoch:3d}] Train Loss: {train_loss:.4f} | "
               f"Test Loss: {test_loss:.4f} | "
-              f"Tab Acc: {tab_acc:.2f}% | Fused Acc: {fused_acc:.2f}%")
+              f"Tab Acc: {tab_acc:.2f}% (AUC {tab_auc_epoch:.4f}) | "
+              f"Fused Acc: {fused_acc:.2f}%")
 
 print("\n" + "="*70)
 print("TRAINING COMPLETE")
@@ -806,18 +576,18 @@ your_auc_wins = len([r for r in history if r['auc'] >= 0.92])      # Your thresh
 avg_acc = np.mean([r['accuracy'] for r in history])
 avg_auc = np.mean([r['auc'] for r in history])
 
-print(f"📊 RESULTS ACROSS {total_datasets} DATASETS:")
+print(f"\U0001F4CA RESULTS ACROSS {total_datasets} DATASETS:")
 print(f"   Avg ACC: {avg_acc:.4f}  |  Avg AUC: {avg_auc:.4f}")
 print(f"   # Wins ACC: {your_acc_wins}/{total_datasets}  |  # Wins AUC: {your_auc_wins}/{total_datasets}")
 
-print("\n📋 TABLE 1 STYLE SUMMARY:")
+print("\n\U0001F4CB TABLE 1 STYLE SUMMARY:")
 print("| Metric          | YourModel |")
 print("|-----------------|-----------|")
 print(f"| OpenML ACC Wins | **{your_acc_wins}** |")
 print(f"| OpenML AUC Wins | **{your_auc_wins}** |")
 print(f"| Avg ACC         | {avg_acc:.4f} |")
 print(f"| Avg AUC         | {avg_auc:.4f} |")
-print("\n💾 Saved to:", RESULTS_FILE)
+print("\n\U0001F4BE Saved to:", RESULTS_FILE)
 print("="*60 + "\n")
 ##################################################################################
 
@@ -846,8 +616,7 @@ print(json.dumps(results))
 print("RESULTS_JSON_END")
 print("="*70 + "\n")
 
-print(f"✅ Experiment completed successfully!")
+print(f"\u2705 Experiment completed successfully!")
 print(f"   Dataset: {file_name}")
 print(f"   Accuracy: {best_accuracy:.2f}%")
 print(f"   AUC: {best_auc:.4f}")
-print(f"   Images: {save_dir}")

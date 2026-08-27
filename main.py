@@ -835,10 +835,8 @@ results = {
     'best_accuracy': best_accuracy,
     'best_auc': best_auc,
     'best_epoch': best_epoch,
-    'images_saved': num_saved,
-    'images_dir': save_dir,
-    'trainable_params': num_params,  
-    'matches_table2': (num_classes == 2 and n_cont_features == 78),  
+    'trainable_params': num_params,
+    'text_embed_dim': TEXT_EMBED_DIM,
     'timestamp': datetime.now().isoformat()
 }
 # Print JSON result (batch script will capture this)

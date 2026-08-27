@@ -352,8 +352,8 @@ class_weights = train_label_counts.sum() / (train_label_counts.float() + 1e-6)
 class_weights = (class_weights / class_weights.sum() * num_classes).to(DEVICE)
 
 train_loader = DataLoader(train_tabular_dataset, batch_size=BATCH_SIZE, shuffle=True)
+val_loader = DataLoader(val_tabular_dataset, batch_size=BATCH_SIZE)
 test_loader = DataLoader(test_tabular_dataset, batch_size=BATCH_SIZE)
-
 
 # ========== MODEL DEFINITIONS ==========
 class SimpleMLP(nn.Module):

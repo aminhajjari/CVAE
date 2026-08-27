@@ -414,41 +414,6 @@ test_synchronized_loader = DataLoader(test_synchronized_dataset, batch_size=BATC
 print(f"[INFO] Synchronized datasets created. Train batches: {len(train_synchronized_loader)}")
 
 # ========== MODEL DEFINITIONS ==========
-class ImageClassifierHead(nn.Module):
-    """
-    Trainable CNN classifier over the reconstructed 28x28 image.
-    Replaces the frozen CLIP zero-shot classifier, which scored against a
-    fixed clothing/digit vocabulary unrelated to the dataset's real classes.
-    """
-    def __init__(self, num_classes):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(1, 32, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Flatten(),
-            nn.Linear(64 * 7 * 7, 128), nn.ReLU(),
-            nn.Linear(128, num_classes)
-        )
-
-    def forward(self, x):
-        return self.net(x)
-
-
-def supcon_loss(z, labels, temperature=0.1):
-    """Supervised contrastive loss on the CVAE latent z."""
-    z = F.normalize(z, dim=1)
-    sim = torch.matmul(z, z.T) / temperature
-    labels = labels.view(-1, 1)
-    mask = torch.eq(labels, labels.T).float().to(z.device)
-    logits_mask = torch.ones_like(mask) - torch.eye(mask.shape[0], device=z.device)
-    mask = mask * logits_mask
-    exp_sim = torch.exp(sim) * logits_mask
-    log_prob = sim - torch.log(exp_sim.sum(1, keepdim=True) + 1e-8)
-    mean_log_prob_pos = (mask * log_prob).sum(1) / (mask.sum(1) + 1e-8)
-    return -mean_log_prob_pos.mean()
-
-
-
 class SimpleMLP(nn.Module):
     def __init__(self, input_dim, latent_dim, num_classes):
         super(SimpleMLP, self).__init__()
@@ -479,48 +444,42 @@ class VIFInitialization(nn.Module):
         x = F.relu(self.fc2(x))
         return x
 
-class CAEWithTabEmbedding(nn.Module):
-    def __init__(self, input_dim, tab_latent_size, num_classes, latent_size=8, vif_values=None):
-        super(CAEWithTabEmbedding, self).__init__()
+
+class TabTextFusionModel(nn.Module):
+    """
+    Fuses tabular features (via VIF-initialized MLP + latent) with a
+    semantically-grounded row-level text embedding (from BAAI/bge-large-en-v1.5),
+    replacing the arbitrary MNIST/FashionMNIST image-reconstruction branch.
+    """
+    def __init__(self, input_dim, tab_latent_size, text_embed_dim, num_classes,
+                 vif_values=None, dropout_p=0.2):
+        super(TabTextFusionModel, self).__init__()
         self.mlp = SimpleMLP(input_dim, tab_latent_size, num_classes)
         if vif_values is not None:
             self.vif_model = VIFInitialization(input_dim, vif_values)
         else:
             self.vif_model = None
-        self.encoder = nn.Sequential(
-            nn.Linear(28*28 + tab_latent_size + input_dim, 128),
+
+        fusion_input_dim = tab_latent_size + input_dim + text_embed_dim
+        self.fusion_head = nn.Sequential(
+            nn.Linear(fusion_input_dim, 128),
             nn.ReLU(),
-            nn.Linear(128, latent_size)
-        )
-        self.decoder = nn.Sequential(
-            nn.Linear(latent_size + tab_latent_size + input_dim, 128),
+            nn.Dropout(dropout_p),
+            nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(128, 28*28),
-            nn.Sigmoid()
+            nn.Dropout(dropout_p),
+            nn.Linear(64, num_classes)
         )
-        self.final_classifier = ImageClassifierHead(num_classes=num_classes)
-        self.gate = nn.Sequential(
-            nn.Linear(tab_latent_size + num_classes, 32),
-            nn.ReLU(),
-            nn.Linear(32, 1),
-            nn.Sigmoid()
-        )
-    def encode(self, x, tab_embedding, vif_embedding):
-        return self.encoder(torch.cat([x, tab_embedding, vif_embedding], dim=1))
-    def decode(self, z, tab_embedding, vif_embedding):
-        return self.decoder(torch.cat([z, tab_embedding, vif_embedding], dim=1))
-    def forward(self, x, tab_data):
+
+    def forward(self, tab_data, text_embedding):
         if self.vif_model is not None:
             vif_embedding = self.vif_model(tab_data)
         else:
             vif_embedding = tab_data
-        tab_embedding, tab_pred = self.mlp(tab_data)
-        z = self.encode(x, tab_embedding, vif_embedding)
-        recon_x = self.decode(z, tab_embedding, vif_embedding)
-        img_pred = self.final_classifier(recon_x.view(-1, 1, 28, 28))
-        alpha = self.gate(torch.cat([tab_embedding, img_pred], dim=1))
-        fused_pred = alpha * img_pred + (1 - alpha) * tab_pred
-        return recon_x, tab_pred, img_pred, fused_pred, z
+        tab_latent, tab_pred = self.mlp(tab_data)
+        fused_input = torch.cat([tab_latent, vif_embedding, text_embedding], dim=1)
+        fused_pred = self.fusion_head(fused_input)
+        return tab_pred, fused_pred
 
 print("[INFO] Creating model...")
 cae = CAEWithTabEmbedding(

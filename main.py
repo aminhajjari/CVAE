@@ -293,20 +293,30 @@ print("[INFO] Standardizing features...")
 scaler = StandardScaler()
 X = scaler.fit_transform(X)
 
-print("[INFO] Splitting into train/test (80/20)...")
+print("[INFO] Splitting into train/val/test (64/16/20)...")
 indices = np.arange(len(X))
-X_train, X_test, y_train, y_test, idx_train, idx_test = train_test_split(
+X_trainval, X_test, y_trainval, y_test, idx_trainval, idx_test = train_test_split(
     X, y, indices, test_size=0.2, random_state=42, stratify=y
 )
+X_train, X_val, y_train, y_val, idx_train, idx_val = train_test_split(
+    X_trainval, y_trainval, idx_trainval, test_size=0.2, random_state=42, stratify=y_trainval
+)
+print(f"[INFO] Train: {len(X_train)}, Val: {len(X_val)}, Test: {len(X_test)}")
 
 text_scaler = StandardScaler()
 text_emb_train = text_scaler.fit_transform(text_embeddings[idx_train])
+text_emb_val = text_scaler.transform(text_embeddings[idx_val])
 text_emb_test = text_scaler.transform(text_embeddings[idx_test])
 
 train_tabular_dataset = TensorDataset(
     torch.tensor(X_train, dtype=torch.float32),
     torch.tensor(y_train, dtype=torch.long),
     torch.tensor(text_emb_train, dtype=torch.float32)
+)
+val_tabular_dataset = TensorDataset(
+    torch.tensor(X_val, dtype=torch.float32),
+    torch.tensor(y_val, dtype=torch.long),
+    torch.tensor(text_emb_val, dtype=torch.float32)
 )
 test_tabular_dataset = TensorDataset(
     torch.tensor(X_test, dtype=torch.float32),

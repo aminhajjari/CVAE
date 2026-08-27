@@ -309,18 +309,24 @@ scaler = StandardScaler()
 X = scaler.fit_transform(X)
 
 print("[INFO] Splitting into train/test (80/20)...")
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
+indices = np.arange(len(X))
+X_train, X_test, y_train, y_test, idx_train, idx_test = train_test_split(
+    X, y, indices, test_size=0.2, random_state=42, stratify=y
 )
-print(f"[INFO] Train samples: {len(X_train)}, Test samples: {len(X_test)}")
+
+text_scaler = StandardScaler()
+text_emb_train = text_scaler.fit_transform(text_embeddings[idx_train])
+text_emb_test = text_scaler.transform(text_embeddings[idx_test])
 
 train_tabular_dataset = TensorDataset(
-    torch.tensor(X_train, dtype=torch.float32), 
-    torch.tensor(y_train, dtype=torch.long)
+    torch.tensor(X_train, dtype=torch.float32),
+    torch.tensor(y_train, dtype=torch.long),
+    torch.tensor(text_emb_train, dtype=torch.float32)
 )
 test_tabular_dataset = TensorDataset(
-    torch.tensor(X_test, dtype=torch.float32), 
-    torch.tensor(y_test, dtype=torch.long)
+    torch.tensor(X_test, dtype=torch.float32),
+    torch.tensor(y_test, dtype=torch.long),
+    torch.tensor(text_emb_test, dtype=torch.float32)
 )
 
 print("[INFO] Calculating VIF values...")

@@ -449,27 +449,21 @@ print(f"       Configuration: C={num_classes} classes, N={n_cont_features} featu
 if num_classes == 2 and n_cont_features == 78:
     print(f"       ✓ Matches Table 2 specs (Expected: ~627.6K)")
 #############################################
-def loss_function(recon_x, x, tab_pred, tab_labels, img_pred, img_labels, fused_pred, z, con_weight=0.5):
-    BCE = F.mse_loss(recon_x, x)
-    tab_loss = F.cross_entropy(tab_pred, tab_labels)
-    img_loss = F.cross_entropy(img_pred, img_labels)
-    fused_loss = F.cross_entropy(fused_pred, tab_labels)
-    con_loss = supcon_loss(z, tab_labels)
-    return BCE + tab_loss + img_loss + fused_loss + con_weight * con_loss
+def loss_function(tab_pred, fused_pred, labels, tab_weight=0.3):
+    tab_loss = F.cross_entropy(tab_pred, labels, weight=class_weights)
+    fused_loss = F.cross_entropy(fused_pred, labels, weight=class_weights)
+    return fused_loss + tab_weight * tab_loss
 
 def train(model, train_data_loader, optimizer, epoch):
     model.train()
     train_loss = 0
-    for tab_data, tab_label, img_data, img_label in train_data_loader:
-        img_data = img_data.view(-1, 28*28).to(DEVICE)
+    for tab_data, label, text_embedding in train_data_loader:
         tab_data = tab_data.to(DEVICE)
-        img_label = img_label.to(DEVICE).long()
-        tab_label = tab_label.to(DEVICE).long()
+        label = label.to(DEVICE).long()
+        text_embedding = text_embedding.to(DEVICE)
         optimizer.zero_grad()
-        random_array = np.random.rand(img_data.shape[0], 28*28)
-        x_rand = torch.Tensor(random_array).to(DEVICE)
-        recon_x, tab_pred, img_pred, fused_pred, z = model(x_rand, tab_data)
-        loss = loss_function(recon_x, img_data, tab_pred, tab_label, img_pred, img_label, fused_pred, z)
+        tab_pred, fused_pred = model(tab_data, text_embedding)
+        loss = loss_function(tab_pred, fused_pred, label)
         loss.backward()
         train_loss += loss.item()
         optimizer.step()
@@ -487,15 +481,12 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
     all_fused_preds = []
 
     with torch.no_grad():
-        for tab_data, tab_label, img_data, img_label in test_data_loader:
-            img_data = img_data.view(-1, 28*28).to(DEVICE)
+        for tab_data, label, text_embedding in test_data_loader:
             tab_data = tab_data.to(DEVICE)
-            img_label = img_label.to(DEVICE).long()
-            tab_label = tab_label.to(DEVICE).long()
-            random_array = np.random.rand(img_data.shape[0], 28*28)
-            x_rand = torch.Tensor(random_array).view(-1, 28*28).to(DEVICE)
-            recon_x, tab_pred, img_pred, fused_pred, z = model(x_rand, tab_data)
-            test_loss += loss_function(recon_x, img_data, tab_pred, tab_label, img_pred, img_label, fused_pred, z).item()
+            label = label.to(DEVICE).long()
+            text_embedding = text_embedding.to(DEVICE)
+            tab_pred, fused_pred = model(tab_data, text_embedding)
+            test_loss += loss_function(tab_pred, fused_pred, label).item()
             tab_probs = F.softmax(tab_pred, dim=1)
             img_probs = F.softmax(img_pred, dim=1)
             fused_probs = F.softmax(fused_pred, dim=1)

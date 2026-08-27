@@ -135,7 +135,7 @@ def run_single_dataset(dataset_path, subdirs, script_path, timeout):
                     results_data = json.loads(json_str)
                     print(f"📊 Tabular Accuracy: {results_data.get('best_accuracy', 0):.2f}%")
                     print(f"📊 AUC: {results_data.get('best_auc', 0):.4f}")
-                    print(f"🖼️  Images: {results_data.get('images_dir', 'N/A')}")
+                    
             except Exception as e:
                 print(f"⚠️  Could not parse results: {e}")
             

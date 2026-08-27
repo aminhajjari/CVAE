@@ -99,7 +99,7 @@ def run_single_dataset(dataset_path, subdirs, script_path, timeout):
     except OSError:
         size_mb = 0
 
-    if 'cifar' in dataset_name.lower() or size_mb > 20:
+    if size_mb > 20:
         print(f"🔧 Large/CIFAR dataset detected ({dataset_name}, {size_mb:.1f}MB) – increasing timeout")
         effective_timeout = max(timeout, 28800)
         

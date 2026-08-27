@@ -610,6 +610,22 @@ results = {
     'timestamp': datetime.now().isoformat()
 }
 # Print JSON result (batch script will capture this)
+# ============================================================
+# Save results to imageout
+# ============================================================
+
+IMAGEOUT_DIR = "/home/gkianfar/scratch/Amin/ICC/output/imageout"
+os.makedirs(IMAGEOUT_DIR, exist_ok=True)
+
+RESULTS_JSON_PATH = os.path.join(
+    IMAGEOUT_DIR,
+    f"{file_name}_results.json"
+)
+
+with open(RESULTS_JSON_PATH, "w") as f:
+    json.dump(results, f, indent=2)
+
+print(f"[INFO] Results saved to: {RESULTS_JSON_PATH}")
 print("\n" + "="*70)
 print("RESULTS_JSON_START")
 print(json.dumps(results))

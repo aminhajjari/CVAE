@@ -758,9 +758,9 @@ best_auc = 0
 best_epoch = 0
 
 for epoch in range(1, EPOCH + 1):
-    train_loss = train(cae, train_synchronized_loader, optimizer, epoch)
-    best_accuracy, best_auc, best_epoch, test_loss, tab_acc, img_acc = test(
-        cae, test_synchronized_loader, epoch, best_accuracy, best_auc, best_epoch
+    train_loss = train(model, train_loader, optimizer, epoch)
+    best_accuracy, best_auc, best_epoch, test_loss, tab_acc, fused_acc = test(
+        model, test_loader, epoch, best_accuracy, best_auc, best_epoch
     )
     
     if epoch % 10 == 0 or epoch == 1:

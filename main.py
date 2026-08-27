@@ -439,12 +439,8 @@ model = TabTextFusionModel(
 ).to(DEVICE)
 optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-4)
 
-print(f"[INFO] Model created with {sum(p.numel() for p in cae.parameters())} parameters")
-# ============================================================
-# TABLE 2 – TRAINABLE PARAMETER COUNT (C = 2, N = 78)
-# TRAINABLE PARAMETER COUNT
-# ============================================================
-num_params = sum(p.numel() for p in cae.parameters() if p.requires_grad)
+num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+print(f"[INFO] Model created with {num_params:,} trainable parameters")
 
 print(f"[INFO] Model created with {num_params:,} trainable parameters")
 print(f"       Configuration: C={num_classes} classes, N={n_cont_features} features")

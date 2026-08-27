@@ -822,11 +822,6 @@ print("="*60 + "\n")
 ##################################################################################
 
 
-# Save sample images
-num_saved, save_dir = save_sample_images(
-    cae, test_synchronized_loader, file_name, num_classes, NUM_IMAGES_TO_SAVE
-)
-
 
 
 

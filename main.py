@@ -300,10 +300,6 @@ print(f"  - Class distribution: {dict(zip(*np.unique(y, return_counts=True)))}")
 print(f"  - Tab latent size: {tab_latent_size}")
 print(f"{'='*70}\n")
 
-
-
-modified_mnist_dataset = ModifiedLabelDataset(mnist_dataset, label_offset=10)
-
 print("[INFO] Standardizing features...")
 scaler = StandardScaler()
 X = scaler.fit_transform(X)
@@ -473,12 +469,9 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
     model.eval()
     test_loss = 0
     correct_tab_total = 0
-    correct_img_total = 0
     correct_fused_total = 0
     total = 0
-    all_tab_labels, all_tab_preds = [], []
-    all_img_labels, all_img_preds = [], []
-    all_fused_preds = []
+    all_labels, all_tab_preds, all_fused_preds = [], [], []
 
     with torch.no_grad():
         for tab_data, label, text_embedding in test_data_loader:
@@ -488,39 +481,42 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
             tab_pred, fused_pred = model(tab_data, text_embedding)
             test_loss += loss_function(tab_pred, fused_pred, label).item()
             tab_probs = F.softmax(tab_pred, dim=1)
-            img_probs = F.softmax(img_pred, dim=1)
             fused_probs = F.softmax(fused_pred, dim=1)
-            all_tab_labels.extend(tab_label.cpu().numpy())
+            all_labels.extend(label.cpu().numpy())
             all_tab_preds.extend(tab_probs.cpu().numpy())
-            all_img_labels.extend(img_label.cpu().numpy())
-            all_img_preds.extend(img_probs.cpu().numpy())
             all_fused_preds.extend(fused_probs.cpu().numpy())
             tab_predicted = torch.argmax(tab_pred, dim=1)
-            img_predicted = torch.argmax(img_pred, dim=1)
             fused_predicted = torch.argmax(fused_pred, dim=1)
-            correct_tab_total += (tab_predicted == tab_label).sum().item()
-            correct_img_total += (img_predicted == img_label).sum().item()
-            correct_fused_total += (fused_predicted == tab_label).sum().item()
-            total += tab_label.size(0)
+            correct_tab_total += (tab_predicted == label).sum().item()
+            correct_fused_total += (fused_predicted == label).sum().item()
+            total += label.size(0)
     
     test_loss /= len(test_data_loader)
     tab_accuracy_total = 100 * correct_tab_total / total
-    img_accuracy_total = 100 * correct_img_total / total
     fused_accuracy_total = 100 * correct_fused_total / total
     
     all_tab_preds_arr = np.array(all_tab_preds)
     all_fused_preds_arr = np.array(all_fused_preds)
-    all_tab_labels_arr = np.array(all_tab_labels)
+    all_labels_arr = np.array(all_labels)
 
     tab_auc, fused_auc = 0.0, 0.0
     if not (np.isnan(all_tab_preds_arr).any() or np.isinf(all_tab_preds_arr).any()):
         try:
             if num_classes == 2:
-                tab_auc = roc_auc_score(all_tab_labels_arr, all_tab_preds_arr[:, 1])
+                tab_auc = roc_auc_score(all_labels_arr, all_tab_preds_arr[:, 1])
             else:
-                tab_auc = roc_auc_score(all_tab_labels_arr, all_tab_preds_arr, multi_class="ovr", average="macro")
+                tab_auc = roc_auc_score(all_labels_arr, all_tab_preds_arr, multi_class="ovr", average="macro")
         except Exception as e:
             print(f"[WARNING] Tab AUC calculation failed: {e}")
+
+    if not (np.isnan(all_fused_preds_arr).any() or np.isinf(all_fused_preds_arr).any()):
+        try:
+            if num_classes == 2:
+                fused_auc = roc_auc_score(all_labels_arr, all_fused_preds_arr[:, 1])
+            else:
+                fused_auc = roc_auc_score(all_labels_arr, all_fused_preds_arr, multi_class="ovr", average="macro")
+        except Exception as e:
+            print(f"[WARNING] Fused AUC calculation failed: {e}")
 
     if not (np.isnan(all_fused_preds_arr).any() or np.isinf(all_fused_preds_arr).any()):
         try:

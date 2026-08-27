@@ -352,72 +352,13 @@ X_sample = X_train[:min(1000, len(X_train))]
 vif_values = calculate_vif_safe(X_sample)
 print(f"[INFO] VIF calculated. Mean: {vif_values.mean():.2f}, Max: {vif_values.max():.2f}")
 
-print("[INFO] Preparing synchronized image-tabular datasets...")
-train_tabular_label_counts = torch.bincount(train_tabular_dataset.tensors[1], minlength=num_classes)
-test_tabular_label_counts = torch.bincount(test_tabular_dataset.tensors[1], minlength=num_classes)
-num_samples_needed = train_tabular_label_counts.tolist()
-num_samples_needed_test = test_tabular_label_counts.tolist()
-valid_labels = set(range(num_classes))
+train_label_counts = torch.bincount(train_tabular_dataset.tensors[1], minlength=num_classes)
+class_weights = train_label_counts.sum() / (train_label_counts.float() + 1e-6)
+class_weights = (class_weights / class_weights.sum() * num_classes).to(DEVICE)
 
-filtered_fashion = Subset(fashionmnist_dataset, 
-    [i for i, (_, label) in enumerate(fashionmnist_dataset) if label in valid_labels])
-filtered_mnist = Subset(modified_mnist_dataset, 
-    [i for i, (_, label) in enumerate(modified_mnist_dataset) if label in valid_labels])
-combined_dataset = ConcatDataset([filtered_fashion, filtered_mnist])
+train_loader = DataLoader(train_tabular_dataset, batch_size=BATCH_SIZE, shuffle=True)
+test_loader = DataLoader(test_tabular_dataset, batch_size=BATCH_SIZE)
 
-indices_by_label = {label: [] for label in range(num_classes)}
-for i, (_, label) in enumerate(combined_dataset):
-    if label not in indices_by_label:
-        print(f"[WARNING] Unexpected label {label} at index {i}")
-    indices_by_label[label].append(i)
-
-repeated_indices = {
-    label: list(itertools.islice(
-        itertools.cycle(indices_by_label[label]),
-        num_samples_needed[label] + num_samples_needed_test[label]
-    ))
-    for label in indices_by_label
-}
-
-aligned_train_indices = []
-aligned_test_indices = []
-for label in valid_labels:
-    train_tab_indices = [i for i, lbl in enumerate(y_train) if lbl == label]
-    test_tab_indices = [i for i, lbl in enumerate(y_test) if lbl == label]
-    train_img_indices = repeated_indices[label][:num_samples_needed[label]]
-    test_img_indices = repeated_indices[label][
-        num_samples_needed[label]:num_samples_needed[label] + num_samples_needed_test[label]
-    ]
-    if len(train_tab_indices) == len(train_img_indices) and \
-       len(test_tab_indices) == len(test_img_indices):
-        aligned_train_indices.extend(list(zip(train_tab_indices, train_img_indices)))
-        aligned_test_indices.extend(list(zip(test_tab_indices, test_img_indices)))
-    else:
-        raise ValueError(f"Mismatch for label {label}")
-
-train_filtered_tab_set = Subset(train_tabular_dataset, [idx[0] for idx in aligned_train_indices])
-train_filtered_img_set = Subset(combined_dataset, [idx[1] for idx in aligned_train_indices])
-test_filtered_tab_set = Subset(test_tabular_dataset, [idx[0] for idx in aligned_test_indices])
-test_filtered_img_set = Subset(combined_dataset, [idx[1] for idx in aligned_test_indices])
-
-class SynchronizedDataset(Dataset):
-    def __init__(self, tabular_dataset, image_dataset):
-        self.tabular_dataset = tabular_dataset
-        self.image_dataset = image_dataset
-        assert len(self.tabular_dataset) == len(self.image_dataset)
-    def __len__(self):
-        return len(self.tabular_dataset)
-    def __getitem__(self, index):
-        tab_data, tab_label = self.tabular_dataset[index]
-        img_data, img_label = self.image_dataset[index]
-        assert tab_label == img_label
-        return tab_data, tab_label, img_data, img_label
-
-train_synchronized_dataset = SynchronizedDataset(train_filtered_tab_set, train_filtered_img_set)
-test_synchronized_dataset = SynchronizedDataset(test_filtered_tab_set, test_filtered_img_set)
-train_synchronized_loader = DataLoader(train_synchronized_dataset, batch_size=BATCH_SIZE, shuffle=True)
-test_synchronized_loader = DataLoader(test_synchronized_dataset, batch_size=BATCH_SIZE)
-print(f"[INFO] Synchronized datasets created. Train batches: {len(train_synchronized_loader)}")
 
 # ========== MODEL DEFINITIONS ==========
 class SimpleMLP(nn.Module):

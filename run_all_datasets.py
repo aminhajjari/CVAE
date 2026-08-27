@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Batch processor for Table2Image-VIF across all OpenML datasets
+Batch processor for Table2Text-VIF across all OpenML datasets
 Enhanced with Weight Decay 
 """
 
@@ -37,7 +37,7 @@ def create_output_structure(base_output_dir, job_id):
     # Create README with run information
     readme_path = os.path.join(run_dir, 'README.txt')
     with open(readme_path, 'w') as f:
-        f.write(f"Table2Image-VIF Batch Processing Results\n")
+        f.write(f"Table2Text-VIF Batch Processing Results\n")
         f.write(f"="*50 + "\n\n")
         f.write(f"Job ID: {job_id}\n")
         f.write(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
@@ -81,7 +81,7 @@ def find_datasets(datasets_dir):
 
 def run_single_dataset(dataset_path, subdirs, script_path, timeout):
     """
-    Run Table2Image-VIF on a single dataset
+    Run Table2Text-VIF on a single dataset
     """
     dataset_name = dataset_path.parent.name
 
@@ -271,12 +271,12 @@ def create_summary_tables(df, subdirs, run_dir):
     # ========== 4. LATEX TABLE ==========
     latex_path = os.path.join(subdirs['latex'], 'results_latex.txt')
     with open(latex_path, 'w') as f:
-        f.write("% LaTeX Table for Paper - Table2Image-VIF Results\n")
+        f.write("% LaTeX Table for Paper - Table2Text-VIF Results\n")
         f.write("% With Weight Decay (1e-4)\n\n")
         
         f.write("\\begin{table}[htbp]\n")
         f.write("\\centering\n")
-        f.write("\\caption{Table2Image-VIF Performance on OpenML-CC18 Benchmark}\n")
+        f.write("\\caption{Table2Text-VIF Performance on OpenML-CC18 Benchmark}\n")
         f.write("\\label{tab:results}\n")
         f.write("\\begin{tabular}{lrrrccc}\n")
         f.write("\\hline\n")
@@ -352,7 +352,7 @@ def create_summary_tables(df, subdirs, run_dir):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Batch process all OpenML datasets with Table2Image-VIF'
+        description='Batch process all OpenML datasets with Table2Text-VIF'
     )
     parser.add_argument('--datasets_dir', type=str, required=True,
                         help='Directory containing dataset folders')
@@ -371,7 +371,7 @@ def main():
     
     # Create organized output structure
     print(f"{'='*70}")
-    print(f"TABLE2IMAGE-VIF BATCH PROCESSOR")
+    print(f"Table2Text-VIF BATCH PROCESSOR")
     print(f"Configuration: Weight Decay (1e-4) ")
     print(f"{'='*70}")
     run_dir, subdirs = create_output_structure(args.output_base, args.job_id)

@@ -93,7 +93,6 @@ def run_single_dataset(dataset_path, subdirs, script_path, timeout):
 
     # --- per‑dataset overrides (CIFAR‑10 special case) ---
     effective_timeout = timeout
-    num_images = '5'
 
     try:
         size_mb = dataset_path.stat().st_size / (1024 * 1024)

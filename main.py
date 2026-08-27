@@ -244,6 +244,27 @@ if num_classes < 2:
     raise ValueError(f"Dataset has only {num_classes} class. Need at least 2.")
 
 X_df = df.drop(columns=[target_col])
+
+print(f"[INFO] Serializing rows to text for embedding...")
+def row_to_text(row):
+    parts = [f"{col}: {row[col]}" for col in X_df.columns]
+    return ", ".join(parts)
+
+row_texts = X_df.apply(row_to_text, axis=1).tolist()
+
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+from sentence_transformers import SentenceTransformer
+
+TEXT_EMBED_MODEL_PATH = "/home/gkianfar/scratch/Amin/models/BAAI/bge-large-en-v1.5"
+text_embed_model = SentenceTransformer(TEXT_EMBED_MODEL_PATH, device=str(DEVICE))
+TEXT_EMBED_DIM = text_embed_model.get_embedding_dimension()
+
+text_embeddings = text_embed_model.encode(
+    row_texts, batch_size=256, show_progress_bar=True,
+    convert_to_numpy=True, normalize_embeddings=True
+)
+
 print(f"[INFO] Encoding categorical features...")
 for col in X_df.columns:
     if not pd.api.types.is_numeric_dtype(X_df[col]):

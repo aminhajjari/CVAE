@@ -12,7 +12,7 @@ import argparse
 import os
 import json
 from datetime import datetime
-
+import copy
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 import warnings
 import scipy.io.arff as arff
@@ -528,27 +528,52 @@ print("\n" + "="*70)
 print("STARTING TRAINING")
 print("="*70)
 
-best_accuracy = 0
-best_auc = 0
+
+best_val_accuracy = 0
+best_val_auc = 0
 best_epoch = 0
+best_model_state = None
+patience = 15
+epochs_without_improvement = 0
 
 for epoch in range(1, EPOCH + 1):
     train_loss = train(model, train_loader, optimizer, epoch)
-    best_accuracy, best_auc, best_epoch, test_loss, tab_acc, fused_acc, tab_auc_epoch = test(
-        model, test_loader, epoch, best_accuracy, best_auc, best_epoch
+    val_accuracy, val_auc, _, val_loss, tab_acc, fused_acc, tab_auc_epoch = test(
+        model, val_loader, epoch, best_val_accuracy, best_val_auc, best_epoch
     )
-    
+
+    if val_accuracy > best_val_accuracy:
+        best_val_accuracy = val_accuracy
+        best_val_auc = val_auc
+        best_epoch = epoch
+        best_model_state = copy.deepcopy(model.state_dict())
+        epochs_without_improvement = 0
+    else:
+        epochs_without_improvement += 1
+
     if epoch % 10 == 0 or epoch == 1:
         print(f"[Epoch {epoch:3d}] Train Loss: {train_loss:.4f} | "
-              f"Test Loss: {test_loss:.4f} | "
+              f"Val Loss: {val_loss:.4f} | "
               f"Tab Acc: {tab_acc:.2f}% (AUC {tab_auc_epoch:.4f}) | "
               f"Fused Acc: {fused_acc:.2f}%")
 
+    if epochs_without_improvement >= patience:
+        print(f"[INFO] Early stopping at epoch {epoch} (no val improvement for {patience} epochs)")
+        break
+
 print("\n" + "="*70)
 print("TRAINING COMPLETE")
-print(f"Best Accuracy: {best_accuracy:.2f}% at epoch {best_epoch}")
-print(f"Best AUC: {best_auc:.4f}")
+print(f"Best Val Accuracy: {best_val_accuracy:.2f}% at epoch {best_epoch}")
+print(f"Best Val AUC: {best_val_auc:.4f}")
 print("="*70 + "\n")
+
+# Load best checkpoint (by val performance) and do ONE honest evaluation on held-out test
+print("[INFO] Loading best checkpoint and evaluating on held-out test set...")
+model.load_state_dict(best_model_state)
+best_accuracy, best_auc, _, test_loss, test_tab_acc, test_fused_acc, test_tab_auc = test(
+    model, test_loader, best_epoch, 0, 0, best_epoch
+)
+print(f"[INFO] Final TEST Accuracy: {best_accuracy:.2f}% | Final TEST AUC: {best_auc:.4f}")
 
 ################################################################
 # AUTOMATIC # OF WINS TRACKER - ADD AFTER TRAINING

@@ -95,10 +95,14 @@ def run_single_dataset(dataset_path, subdirs, script_path, timeout):
     effective_timeout = timeout
     num_images = '5'
 
-    # Adjust these names if your CIFAR folder/file is different
-    if dataset_name.lower() in ['cifar', 'cifar-10', 'cifar10']:
-        print(f"🔧 Detected CIFAR‑10 – increasing timeout and reducing images per class")
-        effective_timeout = max(timeout, 14400)  # at least 4 hours
+    try:
+        size_mb = dataset_path.stat().st_size / (1024 * 1024)
+    except OSError:
+        size_mb = 0
+
+    if 'cifar' in dataset_name.lower() or size_mb > 20:
+        print(f"🔧 Large/CIFAR dataset detected ({dataset_name}, {size_mb:.1f}MB) – increasing timeout")
+        effective_timeout = max(timeout, 28800)
         
 
     # Build command with per‑dataset num_images
@@ -421,10 +425,21 @@ def main():
         if args.skip_existing:
             dataset_name = dataset_path.parent.name
             progress_log_path = os.path.join(subdirs['logs'], 'progress_log.jsonl')
+            already_processed = False
             if os.path.exists(progress_log_path):
                 with open(progress_log_path, 'r') as f:
-                    already_processed = any(dataset_name in line for line in f)
-                
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            entry = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if entry.get('dataset') == dataset_name and entry.get('status') == 'success':
+                            already_processed = True
+                            break
+
                 if already_processed:
                     print(f"⏭️  SKIPPED: {dataset_name} (result found in log)")
                     skipped_count += 1

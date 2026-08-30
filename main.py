@@ -578,10 +578,17 @@ cae = CAEWithTabEmbedding(
     latent_size=8,
     vif_values=vif_values
 ).to(DEVICE)
-#optimizer = optim.AdamW(cae.parameters(), lr=0.001, weight_decay=1e-4)
-#optimizer = ADOPT(cae.parameters(), lr=0.001, decouple=True, weight_decay=1e-4)
-#optimizer = ADOPT(cae.parameters(), lr=0.001, decouple=True)
-optimizer = optim.AdamW(cae.parameters(), lr=0.001, weight_decay=1e-4)
+
+gnn = GNNTabEncoder(
+    input_dim=n_cont_features,
+    latent_dim=tab_latent_size,
+    num_classes=num_classes
+).to(DEVICE)
+
+optimizer = optim.AdamW(
+    list(cae.parameters()) + list(gnn.parameters()),  # both need to be trained
+    lr=0.001, weight_decay=1e-4
+)
 
 print(f"[INFO] Model created with {sum(p.numel() for p in cae.parameters())} parameters")
 # ============================================================

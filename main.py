@@ -314,7 +314,34 @@ X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
 print(f"[INFO] Train samples: {len(X_train)}, Test samples: {len(X_test)}")
+#____________________________________
+print("[INFO] Building k-NN graph over samples for GNN...")
 
+# Combine train+test into one node set so test nodes can attend to train neighbors
+X_graph = np.concatenate([X_train, X_test], axis=0)
+y_graph = np.concatenate([y_train, y_test], axis=0)
+n_train = len(X_train)
+n_total = len(X_graph)
+
+K_NEIGHBORS = min(10, n_train - 1)  # guard against tiny datasets
+knn_adj = kneighbors_graph(X_graph, n_neighbors=K_NEIGHBORS, mode='connectivity', include_self=False)
+knn_adj = knn_adj.tocoo()
+
+# Make symmetric (undirected) and build edge_index
+row = np.concatenate([knn_adj.row, knn_adj.col])
+col = np.concatenate([knn_adj.col, knn_adj.row])
+edge_index = torch.tensor(np.vstack([row, col]), dtype=torch.long).to(DEVICE)
+
+X_graph_tensor = torch.tensor(X_graph, dtype=torch.float32).to(DEVICE)
+y_graph_tensor = torch.tensor(y_graph, dtype=torch.long).to(DEVICE)
+
+# Map original train/test row order -> node index in the graph
+train_node_idx = torch.arange(0, n_train, dtype=torch.long)
+test_node_idx = torch.arange(n_train, n_total, dtype=torch.long)
+
+print(f"[INFO] Graph built: {n_total} nodes, {edge_index.shape[1]} directed edges, k={K_NEIGHBORS}")
+
+#___________________________________________
 train_tabular_dataset = TensorDataset(
     torch.tensor(X_train, dtype=torch.float32), 
     torch.tensor(y_train, dtype=torch.long)

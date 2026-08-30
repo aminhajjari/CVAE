@@ -335,10 +335,6 @@ edge_index = torch.tensor(np.vstack([row, col]), dtype=torch.long).to(DEVICE)
 X_graph_tensor = torch.tensor(X_graph, dtype=torch.float32).to(DEVICE)
 y_graph_tensor = torch.tensor(y_graph, dtype=torch.long).to(DEVICE)
 
-# Map original train/test row order -> node index in the graph
-train_node_idx = torch.arange(0, n_train, dtype=torch.long)
-test_node_idx = torch.arange(n_train, n_total, dtype=torch.long)
-
 print(f"[INFO] Graph built: {n_total} nodes, {edge_index.shape[1]} directed edges, k={K_NEIGHBORS}")
 
 #___________________________________________

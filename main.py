@@ -477,16 +477,24 @@ def supcon_loss(z, labels, temperature=0.1):
 
 
 
-class SimpleMLP(nn.Module):
+class GNNTabEncoder(nn.Module):
+    """
+    Replaces SimpleMLP. Operates on the FULL node set (train+test) with
+    a precomputed k-NN edge_index, so samples can borrow information
+    from similar neighbors instead of being embedded independently.
+    """
     def __init__(self, input_dim, latent_dim, num_classes):
-        super(SimpleMLP, self).__init__()
-        self.fc1 = nn.Linear(input_dim, latent_dim)
-        self.fc2 = nn.Linear(latent_dim, num_classes)
+        super().__init__()
+        self.conv1 = GCNConv(input_dim, latent_dim)
+        self.conv2 = GCNConv(latent_dim, latent_dim)
+        self.classifier = nn.Linear(latent_dim, num_classes)
         self.relu = nn.ReLU()
-    def forward(self, x):
-        tab_latent = self.relu(self.fc1(x))
-        x = self.fc2(tab_latent)
-        return tab_latent, x
+
+    def forward(self, x, edge_index):
+        h = self.relu(self.conv1(x, edge_index))
+        h = self.relu(self.conv2(h, edge_index))
+        logits = self.classifier(h)
+        return h, logits  # tab_latent, tab_pred — same shapes SimpleMLP produced
 
 class VIFInitialization(nn.Module):
     def __init__(self, input_dim, vif_values):

@@ -422,6 +422,11 @@ train_filtered_img_set = Subset(combined_dataset, [idx[1] for idx in aligned_tra
 test_filtered_tab_set = Subset(test_tabular_dataset, [idx[0] for idx in aligned_test_indices])
 test_filtered_img_set = Subset(combined_dataset, [idx[1] for idx in aligned_test_indices])
 
+# --- NEW: graph node id for each row, in the SAME order as the Subsets above ---
+train_node_ids = [idx[0] for idx in aligned_train_indices]
+test_node_ids = [n_train + idx[0] for idx in aligned_test_indices]
+# ---------------------------------------------------------------------------
+
 class SynchronizedDataset(Dataset):
     def __init__(self, tabular_dataset, image_dataset, node_ids):
         self.tabular_dataset = tabular_dataset
@@ -436,8 +441,8 @@ class SynchronizedDataset(Dataset):
         assert tab_label == img_label
         return tab_data, tab_label, img_data, img_label, self.node_ids[index]
 
-train_synchronized_dataset = SynchronizedDataset(train_filtered_tab_set, train_filtered_img_set)
-test_synchronized_dataset = SynchronizedDataset(test_filtered_tab_set, test_filtered_img_set)
+train_synchronized_dataset = SynchronizedDataset(train_filtered_tab_set, train_filtered_img_set, train_node_ids)
+test_synchronized_dataset = SynchronizedDataset(test_filtered_tab_set, test_filtered_img_set, test_node_ids)
 train_synchronized_loader = DataLoader(train_synchronized_dataset, batch_size=BATCH_SIZE, shuffle=True)
 test_synchronized_loader = DataLoader(test_synchronized_dataset, batch_size=BATCH_SIZE)
 print(f"[INFO] Synchronized datasets created. Train batches: {len(train_synchronized_loader)}")

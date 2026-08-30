@@ -423,17 +423,18 @@ test_filtered_tab_set = Subset(test_tabular_dataset, [idx[0] for idx in aligned_
 test_filtered_img_set = Subset(combined_dataset, [idx[1] for idx in aligned_test_indices])
 
 class SynchronizedDataset(Dataset):
-    def __init__(self, tabular_dataset, image_dataset):
+    def __init__(self, tabular_dataset, image_dataset, node_ids):
         self.tabular_dataset = tabular_dataset
         self.image_dataset = image_dataset
-        assert len(self.tabular_dataset) == len(self.image_dataset)
+        self.node_ids = node_ids  # graph node index for each item, aligned by position
+        assert len(self.tabular_dataset) == len(self.image_dataset) == len(self.node_ids)
     def __len__(self):
         return len(self.tabular_dataset)
     def __getitem__(self, index):
         tab_data, tab_label = self.tabular_dataset[index]
         img_data, img_label = self.image_dataset[index]
         assert tab_label == img_label
-        return tab_data, tab_label, img_data, img_label
+        return tab_data, tab_label, img_data, img_label, self.node_ids[index]
 
 train_synchronized_dataset = SynchronizedDataset(train_filtered_tab_set, train_filtered_img_set)
 test_synchronized_dataset = SynchronizedDataset(test_filtered_tab_set, test_filtered_img_set)

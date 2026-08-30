@@ -612,24 +612,26 @@ def loss_function(recon_x, x, tab_pred, tab_labels, img_pred, img_labels, fused_
     con_loss = supcon_loss(z, tab_labels)
     return BCE + tab_loss + img_loss + fused_loss + con_weight * con_loss
 
-def train(model, gnn, train_data_loader, optimizer, epoch, X_graph_tensor, edge_index, node_id_map):
+def train(model, gnn, train_data_loader, optimizer, epoch, X_graph_tensor, edge_index):
     model.train()
     gnn.train()
     train_loss = 0
 
-    # Run GNN ONCE over the full graph for this epoch
-    tab_embedding_all, tab_pred_all = gnn(X_graph_tensor, edge_index)
-
-    for batch_idx, (tab_data, tab_label, img_data, img_label, node_ids) in enumerate(train_data_loader):
+    for tab_data, tab_label, img_data, img_label, node_ids in train_data_loader:
         img_data = img_data.view(-1, 28*28).to(DEVICE)
         tab_data = tab_data.to(DEVICE)
         img_label = img_label.to(DEVICE).long()
         tab_label = tab_label.to(DEVICE).long()
+        node_ids = node_ids.to(DEVICE)
 
+        optimizer.zero_grad()
+
+        # Rerun GNN fresh each batch — cheap (1-2 GCN layers) and avoids
+        # backprop-through-freed-graph errors from reusing one epoch-level pass.
+        tab_embedding_all, tab_pred_all = gnn(X_graph_tensor, edge_index)
         tab_embedding = tab_embedding_all[node_ids]
         tab_pred = tab_pred_all[node_ids]
 
-        optimizer.zero_grad()
         random_array = np.random.rand(img_data.shape[0], 28*28)
         x_rand = torch.Tensor(random_array).to(DEVICE)
         recon_x, tab_pred, img_pred, fused_pred, z = model(x_rand, tab_data, tab_embedding, tab_pred)
@@ -639,8 +641,9 @@ def train(model, gnn, train_data_loader, optimizer, epoch, X_graph_tensor, edge_
         optimizer.step()
     return train_loss / len(train_data_loader)
 
-def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
+def test(model, gnn, test_data_loader, epoch, best_accuracy, best_auc, best_epoch, X_graph_tensor, edge_index):
     model.eval()
+    gnn.eval()
     test_loss = 0
     correct_tab_total = 0
     correct_img_total = 0
@@ -651,15 +654,23 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
     all_fused_preds = []
 
     with torch.no_grad():
-        for tab_data, tab_label, img_data, img_label in test_data_loader:
+        tab_embedding_all, tab_pred_all = gnn(X_graph_tensor, edge_index)
+
+        for tab_data, tab_label, img_data, img_label, node_ids in test_data_loader:
             img_data = img_data.view(-1, 28*28).to(DEVICE)
             tab_data = tab_data.to(DEVICE)
             img_label = img_label.to(DEVICE).long()
             tab_label = tab_label.to(DEVICE).long()
+            node_ids = node_ids.to(DEVICE)
+
+            tab_embedding = tab_embedding_all[node_ids]
+            tab_pred = tab_pred_all[node_ids]
+
             random_array = np.random.rand(img_data.shape[0], 28*28)
             x_rand = torch.Tensor(random_array).view(-1, 28*28).to(DEVICE)
-            recon_x, tab_pred, img_pred, fused_pred, z = model(x_rand, tab_data)
+            recon_x, tab_pred, img_pred, fused_pred, z = model(x_rand, tab_data, tab_embedding, tab_pred)
             test_loss += loss_function(recon_x, img_data, tab_pred, tab_label, img_pred, img_label, fused_pred, z).item()
+
             tab_probs = F.softmax(tab_pred, dim=1)
             img_probs = F.softmax(img_pred, dim=1)
             fused_probs = F.softmax(fused_pred, dim=1)
@@ -675,12 +686,12 @@ def test(model, test_data_loader, epoch, best_accuracy, best_auc, best_epoch):
             correct_img_total += (img_predicted == img_label).sum().item()
             correct_fused_total += (fused_predicted == tab_label).sum().item()
             total += tab_label.size(0)
-    
+
     test_loss /= len(test_data_loader)
     tab_accuracy_total = 100 * correct_tab_total / total
     img_accuracy_total = 100 * correct_img_total / total
     fused_accuracy_total = 100 * correct_fused_total / total
-    
+
     all_tab_preds_arr = np.array(all_tab_preds)
     all_fused_preds_arr = np.array(all_fused_preds)
     all_tab_labels_arr = np.array(all_tab_labels)

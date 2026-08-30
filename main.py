@@ -518,11 +518,14 @@ class VIFInitialization(nn.Module):
 class CAEWithTabEmbedding(nn.Module):
     def __init__(self, input_dim, tab_latent_size, num_classes, latent_size=8, vif_values=None):
         super(CAEWithTabEmbedding, self).__init__()
-        self.mlp = SimpleMLP(input_dim, tab_latent_size, num_classes)
+        # NOTE: self.mlp = SimpleMLP(...) removed — the GNN now lives OUTSIDE this
+        # class (in the training loop) because it needs the full graph (X_graph,
+        # edge_index) rather than just the current mini-batch's tab_data.
         if vif_values is not None:
             self.vif_model = VIFInitialization(input_dim, vif_values)
         else:
             self.vif_model = None
+
         self.encoder = nn.Sequential(
             nn.Linear(28*28 + tab_latent_size + input_dim, 128),
             nn.ReLU(),
@@ -541,16 +544,24 @@ class CAEWithTabEmbedding(nn.Module):
             nn.Linear(32, 1),
             nn.Sigmoid()
         )
+
     def encode(self, x, tab_embedding, vif_embedding):
         return self.encoder(torch.cat([x, tab_embedding, vif_embedding], dim=1))
+
     def decode(self, z, tab_embedding, vif_embedding):
         return self.decoder(torch.cat([z, tab_embedding, vif_embedding], dim=1))
-    def forward(self, x, tab_data):
+
+    def forward(self, x, tab_data, tab_embedding, tab_pred):
+        """
+        tab_embedding, tab_pred: now PASSED IN from the GNN (computed in the
+        training loop over the batch's node subgraph), instead of being
+        computed here from self.mlp(tab_data) like before.
+        """
         if self.vif_model is not None:
             vif_embedding = self.vif_model(tab_data)
         else:
             vif_embedding = tab_data
-        tab_embedding, tab_pred = self.mlp(tab_data)
+
         z = self.encode(x, tab_embedding, vif_embedding)
         recon_x = self.decode(z, tab_embedding, vif_embedding)
         img_pred = self.final_classifier(recon_x.view(-1, 1, 28, 28))

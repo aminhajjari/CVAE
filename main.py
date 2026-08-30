@@ -725,46 +725,42 @@ def test(model, gnn, test_data_loader, epoch, best_accuracy, best_auc, best_epoc
 
 # ========== IMAGE SAVING FUNCTION ==========
 
-def save_sample_images(model, test_data_loader, dataset_name, num_classes, num_images=20):
-    """
-    Save reconstructed images with DIVERSE labels
-    Ensures all classes are represented in saved samples
-    """
+def save_sample_images(model, gnn, test_data_loader, dataset_name, num_classes, num_images,
+                        X_graph_tensor, edge_index):
     model.eval()
+    gnn.eval()
     images_base_dir = "/home/gkianfar/scratch/Amin/ICC/output/imageout"
     images_dir = os.path.join(images_base_dir, dataset_name)
     os.makedirs(images_dir, exist_ok=True)
-    
-    # Calculate samples per class (ensure diversity)
+
     samples_per_class = max(1, num_images // num_classes)
     total_to_save = samples_per_class * num_classes
-    
+
     print(f"\n[INFO] Generating {total_to_save} sample images...")
     print(f"[INFO] Strategy: {samples_per_class} samples × {num_classes} classes")
-    
-    # Storage for images by class
+
     class_samples = {label: [] for label in range(num_classes)}
-    
-    # Collect samples for each class
+
     with torch.no_grad():
-        for tab_data, tab_label, img_data, img_label in test_data_loader:
-            # Check if we have enough samples for all classes
+        tab_embedding_all, tab_pred_all = gnn(X_graph_tensor, edge_index)
+
+        for tab_data, tab_label, img_data, img_label, node_ids in test_data_loader:
             if all(len(samples) >= samples_per_class for samples in class_samples.values()):
                 break
-                
+
             img_data_flat = img_data.view(-1, 28*28).to(DEVICE)
             tab_data = tab_data.to(DEVICE)
-            
-            # Generate reconstructed images
+            node_ids = node_ids.to(DEVICE)
+
+            tab_embedding = tab_embedding_all[node_ids]
+            tab_pred = tab_pred_all[node_ids]
+
             random_array = np.random.rand(img_data_flat.shape[0], 28*28)
             x_rand = torch.Tensor(random_array).to(DEVICE)
-            recon_x, _, _, _, _ = model(x_rand, tab_data)
-            
-            # Store samples by class
+            recon_x, _, _, _, _ = model(x_rand, tab_data, tab_embedding, tab_pred)
+
             for i in range(len(tab_label)):
                 label = tab_label[i].item()
-                
-                # Only collect if we need more samples for this class
                 if len(class_samples[label]) < samples_per_class:
                     class_samples[label].append({
                         'original': img_data[i].cpu().numpy(),
@@ -942,11 +938,10 @@ best_auc = 0
 best_epoch = 0
 
 for epoch in range(1, EPOCH + 1):
-    train_loss = train(cae, train_synchronized_loader, optimizer, epoch)
+    train_loss = train(cae, gnn, train_synchronized_loader, optimizer, epoch, X_graph_tensor, edge_index)
     best_accuracy, best_auc, best_epoch, test_loss, tab_acc, img_acc = test(
-        cae, test_synchronized_loader, epoch, best_accuracy, best_auc, best_epoch
+        cae, gnn, test_synchronized_loader, epoch, best_accuracy, best_auc, best_epoch, X_graph_tensor, edge_index
     )
-    
     if epoch % 10 == 0 or epoch == 1:
         print(f"[Epoch {epoch:3d}] Train Loss: {train_loss:.4f} | "
               f"Test Loss: {test_loss:.4f} | "
@@ -1012,9 +1007,9 @@ print("="*60 + "\n")
 
 # Save sample images
 num_saved, save_dir = save_sample_images(
-    cae, test_synchronized_loader, file_name, num_classes, NUM_IMAGES_TO_SAVE
+    cae, gnn, test_synchronized_loader, file_name, num_classes, NUM_IMAGES_TO_SAVE,
+    X_graph_tensor, edge_index
 )
-
 
 
 

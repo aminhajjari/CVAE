@@ -21,17 +21,13 @@
 # Configuration
 #=======================================================================
 
-# Project / code
 PROJECT_DIR="/home/gkianfar/scratch/Amin/AI"
 TAB2IMG_DIR="$PROJECT_DIR/CVAE"
 
-# Datasets
 DATASETS_DIR="/home/gkianfar/scratch/Amin/ICC/Unzippeddata/CSV"
 
-# Python virtual environment
 VENV_PATH="/home/gkianfar/scratch/Amin/ICC/venvMsc/bin/activate"
 
-# Python scripts
 BATCH_SCRIPT="$TAB2IMG_DIR/run_all_datasets.py"
 MAIN_SCRIPT="$TAB2IMG_DIR/main.py"
 # 28800 seconds = 8 hours

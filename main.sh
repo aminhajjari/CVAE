@@ -5,7 +5,7 @@
 #=======================================================================
 
 #SBATCH --account=def-arashmoh
-#SBATCH --job-name=V2I
+#SBATCH --job-name=CAEV2I
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=h100:1
 #SBATCH --cpus-per-task=8

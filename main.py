@@ -730,7 +730,7 @@ def save_sample_images(model, gnn, test_data_loader, dataset_name, num_classes, 
                         X_graph_tensor, edge_index):
     model.eval()
     gnn.eval()
-    images_base_dir = "/home/gkianfar/scratch/Amin/AI/output/imageout"
+    images_base_dir = "/home/gkianfar/scratch/Amin/AI/outputs/imageout"
     images_dir = os.path.join(images_base_dir, dataset_name)
     os.makedirs(images_dir, exist_ok=True)
 

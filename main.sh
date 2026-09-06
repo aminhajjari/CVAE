@@ -21,22 +21,19 @@
 # Configuration
 #=======================================================================
 
+# Project / code
 PROJECT_DIR="/home/gkianfar/scratch/Amin/AI"
-
-# Code
 TAB2IMG_DIR="$PROJECT_DIR/CVAE"
 
 # Datasets
-DATASETS_DIR="$PROJECT_DIR/Unzippeddata/CSV"
+DATASETS_DIR="/home/gkianfar/scratch/Amin/ICC/Unzippeddata/CSV"
 
 # Python virtual environment
-VENV_PATH="$PROJECT_DIR/venvMsc/bin/activate"
+VENV_PATH="/home/gkianfar/scratch/Amin/ICC/venvMsc/bin/activate"
 
 # Python scripts
 BATCH_SCRIPT="$TAB2IMG_DIR/run_all_datasets.py"
 MAIN_SCRIPT="$TAB2IMG_DIR/main.py"
-
-# Timeout for each dataset
 # 28800 seconds = 8 hours
 TIMEOUT_DEFAULT=28800
 

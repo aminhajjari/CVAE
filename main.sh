@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #=======================================================================
-# PRODUCTION SLURM SCRIPT - 80 Datasets with Weight Decay
+# PRODUCTION SLURM SCRIPT - CVAE / V2I - All Datasets
 #=======================================================================
 
 #SBATCH --account=def-arashmoh
@@ -12,8 +12,10 @@
 #SBATCH --mem=64G
 #SBATCH --time=96:00:00
 
+# SLURM logs
 #SBATCH --output=/home/gkianfar/scratch/Amin/AI/outputs/logs/ALLCVAE_%A.out
 #SBATCH --error=/home/gkianfar/scratch/Amin/AI/outputs/logs/ALLCVAE_%A.err
+
 
 #=======================================================================
 # Configuration
@@ -21,20 +23,27 @@
 
 PROJECT_DIR="/home/gkianfar/scratch/Amin/AI"
 
+# Code
 TAB2IMG_DIR="$PROJECT_DIR/CVAE"
 
+# Datasets
 DATASETS_DIR="$PROJECT_DIR/Unzippeddata/CSV"
 
+# Python virtual environment
 VENV_PATH="$PROJECT_DIR/venvMsc/bin/activate"
 
+# Python scripts
 BATCH_SCRIPT="$TAB2IMG_DIR/run_all_datasets.py"
 MAIN_SCRIPT="$TAB2IMG_DIR/main.py"
 
-RESULTS_BASE="$PROJECT_DIR/output"
+# Output directories
+RESULTS_BASE="$PROJECT_DIR/outputs"
+IMAGE_OUTPUT_DIR="$PROJECT_DIR/outputs/imageout"
+JOB_LOGS_DIR="$PROJECT_DIR/outputs/logs"
 
-JOB_LOGS_DIR="$PROJECT_DIR/output"
-
-TIMEOUT_DEFAULT=28800 # 4 hours
+# Timeout for each dataset
+# 28800 seconds = 8 hours
+TIMEOUT_DEFAULT=28800
 
 
 #=======================================================================
@@ -42,20 +51,47 @@ TIMEOUT_DEFAULT=28800 # 4 hours
 #=======================================================================
 
 echo "=========================================="
-echo "TABLE2IMAGE-VIF PRODUCTION RUN"
+echo "TABLE2IMAGE-CVAE PRODUCTION RUN"
 echo "=========================================="
 echo "Job ID: $SLURM_JOB_ID"
 echo "Started: $(date)"
 echo "Node: $(hostname)"
+echo ""
+echo "Project dir:  $PROJECT_DIR"
+echo "Code dir:     $TAB2IMG_DIR"
 echo "Datasets dir: $DATASETS_DIR"
-echo "Code dir: $TAB2IMG_DIR"
-echo "Output dir: $RESULTS_BASE"
+echo "Output dir:   $RESULTS_BASE"
+echo "Image dir:    $IMAGE_OUTPUT_DIR"
+echo "Logs dir:     $JOB_LOGS_DIR"
+echo ""
 echo "Configuration:"
-echo "  - Weight Decay: 1e-4 (AdamW)"
-echo "  - Timeout: 4 hours per dataset"
+echo "  - GPU: H100"
 echo "  - CPUs: 8 cores"
 echo "  - Memory: 64GB"
+echo "  - SLURM walltime: 96 hours"
+echo "  - Dataset timeout: 8 hours"
+echo "  - Weight Decay: 1e-4 (AdamW)"
 echo "=========================================="
+echo ""
+
+
+#=======================================================================
+# Create Required Directories
+#=======================================================================
+
+echo "Creating directories..."
+
+mkdir -p "$RESULTS_BASE"
+mkdir -p "$IMAGE_OUTPUT_DIR"
+mkdir -p "$JOB_LOGS_DIR"
+
+echo "Directories:"
+echo "  Results: $RESULTS_BASE"
+echo "  Images:  $IMAGE_OUTPUT_DIR"
+echo "  Logs:    $JOB_LOGS_DIR"
+echo ""
+
+echo "Directory creation complete."
 echo ""
 
 
@@ -63,21 +99,21 @@ echo ""
 # GPU Information
 #=======================================================================
 
-echo "GPU Information:"
-nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
-echo ""
+echo "=========================================="
+echo "GPU INFORMATION"
+echo "=========================================="
 
+if command -v nvidia-smi >/dev/null 2>&1; then
 
-#=======================================================================
-# Setup
-#=======================================================================
+    nvidia-smi --query-gpu=name,memory.total,driver_version \
+        --format=csv,noheader
 
-echo "Creating directories..."
+else
 
-mkdir -p "$JOB_LOGS_DIR"
-mkdir -p "$RESULTS_BASE"
+    echo "WARNING: nvidia-smi not found."
 
-echo "✅ Directories ready"
+fi
+
 echo ""
 
 
@@ -85,38 +121,93 @@ echo ""
 # Verify Files
 #=======================================================================
 
-echo "Verifying environment..."
+echo "=========================================="
+echo "VERIFYING FILES"
+echo "=========================================="
+
+#-----------------------------------------------------------------------
+# Dataset directory
+#-----------------------------------------------------------------------
 
 if [ ! -d "$DATASETS_DIR" ]; then
-    echo "❌ ERROR: Datasets not found:"
-    echo "   $DATASETS_DIR"
+
+    echo "ERROR: Dataset directory not found:"
+    echo "  $DATASETS_DIR"
     exit 1
+
 fi
+
+echo "OK: Dataset directory found."
+
+
+#-----------------------------------------------------------------------
+# Batch script
+#-----------------------------------------------------------------------
 
 if [ ! -f "$BATCH_SCRIPT" ]; then
-    echo "❌ ERROR: Batch script not found:"
-    echo "   $BATCH_SCRIPT"
+
+    echo "ERROR: Batch script not found:"
+    echo "  $BATCH_SCRIPT"
     exit 1
+
 fi
+
+echo "OK: Batch script found:"
+echo "  $BATCH_SCRIPT"
+
+
+#-----------------------------------------------------------------------
+# Main script
+#-----------------------------------------------------------------------
 
 if [ ! -f "$MAIN_SCRIPT" ]; then
-    echo "❌ ERROR: Main script not found:"
-    echo "   $MAIN_SCRIPT"
+
+    echo "ERROR: Main script not found:"
+    echo "  $MAIN_SCRIPT"
     exit 1
+
 fi
 
+echo "OK: Main script found:"
+echo "  $MAIN_SCRIPT"
+
+
+#-----------------------------------------------------------------------
+# Virtual environment
+#-----------------------------------------------------------------------
+
 if [ ! -f "$VENV_PATH" ]; then
-    echo "❌ ERROR: Virtual environment not found:"
-    echo "   $VENV_PATH"
+
+    echo "ERROR: Virtual environment not found:"
+    echo "  $VENV_PATH"
     exit 1
+
 fi
+
+echo "OK: Virtual environment found:"
+echo "  $VENV_PATH"
+
+echo ""
+
+
+#=======================================================================
+# Count Datasets
+#=======================================================================
 
 DATASET_COUNT=$(find "$DATASETS_DIR" \
     -mindepth 1 \
     -maxdepth 1 \
     -type d | wc -l)
 
-echo "✅ Found $DATASET_COUNT dataset folders"
+echo "Found $DATASET_COUNT dataset folders."
+
+if [ "$DATASET_COUNT" -eq 0 ]; then
+
+    echo "ERROR: No dataset folders found."
+    exit 1
+
+fi
+
 echo ""
 
 
@@ -124,22 +215,38 @@ echo ""
 # Load Environment
 #=======================================================================
 
-echo "Loading modules..."
+echo "=========================================="
+echo "LOADING ENVIRONMENT"
+echo "=========================================="
 
 module purge
+
 module load StdEnv/2023
 module load python/3.11
 module load cuda/12.2
 
-echo "✅ Modules loaded"
+echo "Modules loaded:"
+module list 2>&1
+
 echo ""
 
+
+#=======================================================================
+# Activate Virtual Environment
+#=======================================================================
 
 echo "Activating virtual environment..."
 
 source "$VENV_PATH"
 
-echo "✅ Virtual environment active"
+if [ $? -ne 0 ]; then
+
+    echo "ERROR: Failed to activate virtual environment."
+    exit 1
+
+fi
+
+echo "Virtual environment activated."
 echo ""
 
 
@@ -147,45 +254,134 @@ echo ""
 # Python Environment Check
 #=======================================================================
 
-echo "Python environment:"
+echo "=========================================="
+echo "PYTHON ENVIRONMENT"
+echo "=========================================="
 
+echo "Python:"
 which python
+
+echo ""
+
+echo "Python version:"
 python --version
+
+echo ""
+
+echo "Python executable:"
+python -c "import sys; print(sys.executable)"
+
+echo ""
+
+echo "PyTorch / CUDA check:"
 
 python -c "
 import torch
-print(f'PyTorch: {torch.__version__}')
-print(f'CUDA available: {torch.cuda.is_available()}')
+
+print('PyTorch version:', torch.__version__)
+print('CUDA available:', torch.cuda.is_available())
+print('PyTorch CUDA version:', torch.version.cuda)
+
 if torch.cuda.is_available():
-    print(f'GPU: {torch.cuda.get_device_name(0)}')
+
+    print('GPU count:', torch.cuda.device_count())
+    print('GPU:', torch.cuda.get_device_name(0))
+    print('GPU capability:', torch.cuda.get_device_capability(0))
+
 "
 
 if [ $? -ne 0 ]; then
-    echo "❌ ERROR: Environment check failed!"
+
+    echo ""
+    echo "ERROR: Python/PyTorch environment check failed."
     exit 1
+
 fi
 
-echo "✅ Environment ready"
+echo ""
+echo "Python environment ready."
 echo ""
 
 
 #=======================================================================
-# Verify Weight Decay in Code
+# Verify Weight Decay
 #=======================================================================
 
-echo "Verifying weight decay configuration..."
+echo "=========================================="
+echo "VERIFYING WEIGHT DECAY"
+echo "=========================================="
 
 if grep -q "weight_decay=1e-4" "$MAIN_SCRIPT"; then
 
-    echo "✅ Weight decay (1e-4) confirmed in run_vif.py"
+    echo "OK: weight_decay=1e-4 found in:"
+    echo "  $MAIN_SCRIPT"
 
 else
 
-    echo "⚠️ WARNING: weight_decay not found in run_vif.py"
-    echo "   Make sure it's configured correctly!"
+    echo "WARNING: weight_decay=1e-4 was NOT found in:"
+    echo "  $MAIN_SCRIPT"
+
+    echo ""
+    echo "Please verify the weight decay configuration manually."
 
 fi
 
+echo ""
+
+
+#=======================================================================
+# Print Final Configuration
+#=======================================================================
+
+echo "=========================================="
+echo "FINAL CONFIGURATION"
+echo "=========================================="
+
+echo "Project:"
+echo "  $PROJECT_DIR"
+
+echo ""
+echo "Code:"
+echo "  $TAB2IMG_DIR"
+
+echo ""
+echo "Batch script:"
+echo "  $BATCH_SCRIPT"
+
+echo ""
+echo "Main script:"
+echo "  $MAIN_SCRIPT"
+
+echo ""
+echo "Datasets:"
+echo "  $DATASETS_DIR"
+
+echo ""
+echo "Virtual environment:"
+echo "  $VENV_PATH"
+
+echo ""
+echo "Results:"
+echo "  $RESULTS_BASE"
+
+echo ""
+echo "Images:"
+echo "  $IMAGE_OUTPUT_DIR"
+
+echo ""
+echo "Logs:"
+echo "  $JOB_LOGS_DIR"
+
+echo ""
+echo "Dataset count:"
+echo "  $DATASET_COUNT"
+
+echo ""
+echo "Per-dataset timeout:"
+echo "  $TIMEOUT_DEFAULT seconds (8 hours)"
+
+echo ""
+echo "=========================================="
 echo ""
 
 
@@ -194,32 +390,42 @@ echo ""
 #=======================================================================
 
 echo "=========================================="
-echo "🚀 STARTING BATCH PROCESSING"
+echo "STARTING BATCH PROCESSING"
 echo "=========================================="
 
-echo "Using:"
-echo "  Code:     $TAB2IMG_DIR"
-echo "  Datasets: $DATASETS_DIR"
-echo "  Output:   $RESULTS_BASE"
-echo "  Datasets: $DATASET_COUNT"
+echo "Command:"
 echo ""
-
-echo "Running command:"
 echo "python $BATCH_SCRIPT \\"
-echo "  --datasets_dir $DATASETS_DIR \\"
-echo "  --output_base $RESULTS_BASE \\"
-echo "  --job_id $SLURM_JOB_ID \\"
-echo "  --script_path $MAIN_SCRIPT \\"
-echo "  --timeout $TIMEOUT_DEFAULT"
+echo "    --datasets_dir $DATASETS_DIR \\"
+echo "    --output_base $RESULTS_BASE \\"
+echo "    --job_id $SLURM_JOB_ID \\"
+echo "    --script_path $MAIN_SCRIPT \\"
+echo "    --timeout $TIMEOUT_DEFAULT \\"
+echo "    --skip_existing"
 
 echo ""
 echo "=========================================="
 echo ""
 
 
-# Run the batch processor
+#-----------------------------------------------------------------------
+# Move to code directory
+#-----------------------------------------------------------------------
 
 cd "$TAB2IMG_DIR"
+
+if [ $? -ne 0 ]; then
+
+    echo "ERROR: Could not change to code directory:"
+    echo "  $TAB2IMG_DIR"
+    exit 1
+
+fi
+
+
+#-----------------------------------------------------------------------
+# Run batch processor
+#-----------------------------------------------------------------------
 
 python "$BATCH_SCRIPT" \
     --datasets_dir "$DATASETS_DIR" \
@@ -246,62 +452,83 @@ echo "Exit code: $EXIT_CODE"
 echo ""
 
 
-if [ $EXIT_CODE -eq 0 ]; then
+#=======================================================================
+# Success
+#=======================================================================
+
+if [ "$EXIT_CODE" -eq 0 ]; then
+
+    echo "SUCCESS!"
+    echo ""
+
+    echo "Results base directory:"
+    echo "  $RESULTS_BASE"
+    echo ""
+
+    echo "Image output directory:"
+    echo "  $IMAGE_OUTPUT_DIR"
+    echo ""
+
+    echo "SLURM logs:"
+    echo "  $JOB_LOGS_DIR/ALLCVAE_${SLURM_JOB_ID}.out"
+    echo "  $JOB_LOGS_DIR/ALLCVAE_${SLURM_JOB_ID}.err"
+    echo ""
+
+    #-------------------------------------------------------------------
+    # Find job-specific result directory
+    #-------------------------------------------------------------------
 
     RESULT_DIR=$(find "$RESULTS_BASE" \
         -maxdepth 1 \
         -type d \
-        -name "*_JOB${SLURM_JOB_ID}" | head -1)
+        -name "*_JOB${SLURM_JOB_ID}" \
+        | head -1)
 
-    echo "✅ SUCCESS!"
-    echo ""
+    if [ -n "$RESULT_DIR" ]; then
 
-    echo "📂 Results location:"
-    echo "    $RESULT_DIR/"
-    echo ""
+        echo "Job result directory:"
+        echo "  $RESULT_DIR"
+        echo ""
 
-    echo "📊 Files generated:"
-    echo "    ├── csv/"
-    echo "    │   ├── results_summary.csv"
-    echo "    │   ├── results_detailed.csv"
-    echo "    │   └── statistics.csv"
-    echo "    ├── latex/"
-    echo "    │   └── results_latex.txt"
-    echo "    ├── logs/"
-    echo "    │   ├── results.jsonl"
-    echo "    │   └── progress_log.jsonl"
-    echo "    └── README.txt"
-    echo ""
+        echo "Generated files/directories:"
+        find "$RESULT_DIR" -maxdepth 2 -type f | head -50
 
-    if [ -f "$RESULT_DIR/csv/statistics.csv" ]; then
+    else
 
-        echo "📊 Quick Statistics:"
-
-        grep "Average Accuracy" \
-            "$RESULT_DIR/csv/statistics.csv" | head -1
-
-        grep "Datasets >90%" \
-            "$RESULT_DIR/csv/statistics.csv" | head -1
+        echo "No *_JOB${SLURM_JOB_ID} result directory detected."
+        echo "Please inspect:"
+        echo "  $RESULTS_BASE"
 
     fi
 
     echo ""
-
-    echo "📧 Completion email sent to: aminhajjr@gmail.com"
-
-    echo "🎉 All $DATASET_COUNT datasets processed!"
+    echo "All $DATASET_COUNT datasets processed."
 
 else
 
-    echo "⚠️ Some datasets may have failed"
-
+    echo "WARNING: Batch processor returned exit code $EXIT_CODE."
     echo ""
-    echo "Check SLURM logs:"
-    echo "    Output: $JOB_LOGS_DIR/production_${SLURM_JOB_ID}.out"
-    echo "    Error:  $JOB_LOGS_DIR/production_${SLURM_JOB_ID}.err"
+    echo "Some datasets may have failed."
+    echo ""
+    echo "Check SLURM output log:"
+    echo "  $JOB_LOGS_DIR/ALLCVAE_${SLURM_JOB_ID}.out"
+    echo ""
+    echo "Check SLURM error log:"
+    echo "  $JOB_LOGS_DIR/ALLCVAE_${SLURM_JOB_ID}.err"
+    echo ""
+    echo "Check generated results:"
+    echo "  $RESULTS_BASE"
+    echo ""
 
 fi
 
+
+#=======================================================================
+# End
+#=======================================================================
+
+echo "=========================================="
+echo "JOB FINISHED"
 echo "=========================================="
 
-exit $EXIT_CODE
+exit "$EXIT_CODE"

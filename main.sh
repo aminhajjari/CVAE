@@ -36,11 +36,6 @@ VENV_PATH="$PROJECT_DIR/venvMsc/bin/activate"
 BATCH_SCRIPT="$TAB2IMG_DIR/run_all_datasets.py"
 MAIN_SCRIPT="$TAB2IMG_DIR/main.py"
 
-# Output directories
-RESULTS_BASE="$PROJECT_DIR/outputs"
-IMAGE_OUTPUT_DIR="$PROJECT_DIR/outputs/imageout"
-JOB_LOGS_DIR="$PROJECT_DIR/outputs/logs"
-
 # Timeout for each dataset
 # 28800 seconds = 8 hours
 TIMEOUT_DEFAULT=28800

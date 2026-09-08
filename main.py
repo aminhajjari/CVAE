@@ -618,6 +618,22 @@ def train(model, gnn, train_data_loader, optimizer, epoch, X_graph_tensor, edge_
     gnn.train()
     train_loss = 0
 
+    # GNN: one full-graph forward+backward per epoch (standard for transductive
+    # GCN training), instead of recomputing it on every mini-batch. This was the
+    # bottleneck on large datasets (e.g. CIFAR-10-tabular, 60k nodes) — running
+    # the full-graph forward ~900 times/epoch instead of once was blowing past
+    # the 8h timeout. Only supervise on train nodes to avoid leaking test labels.
+    optimizer.zero_grad()
+    tab_embedding_all, tab_pred_all = gnn(X_graph_tensor, edge_index)
+    gnn_loss = F.cross_entropy(tab_pred_all[:n_train], y_graph_tensor[:n_train])
+    gnn_loss.backward()
+    optimizer.step()
+
+    # Freeze this epoch's embeddings/preds as fixed input features for the
+    # per-batch fusion model below — no need to replay the GNN every batch.
+    tab_embedding_all = tab_embedding_all.detach()
+    tab_pred_all = tab_pred_all.detach()
+
     for tab_data, tab_label, img_data, img_label, node_ids in train_data_loader:
         img_data = img_data.view(-1, 28*28).to(DEVICE)
         tab_data = tab_data.to(DEVICE)
@@ -627,9 +643,6 @@ def train(model, gnn, train_data_loader, optimizer, epoch, X_graph_tensor, edge_
 
         optimizer.zero_grad()
 
-        # Rerun GNN fresh each batch — cheap (1-2 GCN layers) and avoids
-        # backprop-through-freed-graph errors from reusing one epoch-level pass.
-        tab_embedding_all, tab_pred_all = gnn(X_graph_tensor, edge_index)
         tab_embedding = tab_embedding_all[node_ids]
         tab_pred = tab_pred_all[node_ids]
 
@@ -961,7 +974,7 @@ print("YOUR MODEL BENCHMARK RESULTS")
 print("="*60)
 
 # Load/save your results history
-RESULTS_FILE = "/home/gkianfar/scratch/Amin/ICC/output/my_model_wins.json"
+RESULTS_FILE = "/home/gkianfar/scratch/Amin/AI/outputs/my_model_wins.json"
 if os.path.exists(RESULTS_FILE):
     with open(RESULTS_FILE, 'r') as f:
         history = json.load(f)
